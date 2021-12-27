@@ -1,0 +1,73 @@
+﻿Mapping:
+
+Whole-row types:
+* Records (constructor + property name-based binding)
+	(includes anonymous types, pocos)
+* Dictionary, ExpandoObject, IDictionary, IROD
+	key must be string or object. Value is type-bound
+* ValueTuple (position-based binding or unique type-based binding)
+* Array (position + type binding)
+
+Scalars:
+* numeric <-> numeric always allowed, but all narrowing/truncating conversions are checked for overflow
+	- note: float/double/decimal will always lose something in the conversion; is this ok? Probably since the idea is there. We could still check max values
+	- OTOH if this was money that would be bad...
+* T <-> T?, but null to non-null is checked
+* 
+
+Note: DbDataREader.ReadAsync() returns a completed task most of the time. For bulk reads therefore we can use a dynamicmethod
+for the read loop; we just generate for example a method like this:
+Task<bool>? ReadListAsync(SqlDataReader reader, List<SomeType> list)
+{
+    while (true)
+	{
+		var readTask = reader.ReadAsync();
+		if (!readTask.IsCompleted) { return readTask; }
+		if (!readTask.GetAwaiter.GetResult()) { return null; }
+
+		list.Add(MapRow(reader)); // MapRowFunction is also dynamic; could be manually inlined
+	}
+}
+
+Then we'd call our compiled delegate like so:
+var list = new List<T>();
+await using var reader = cmd.ExecuteReaderAsync();
+while (true)
+{
+	var readTask = ReadListAsync(reader, list);
+	if (readTask == null || !await readTask) { break; }	
+}
+
+The benefit here is getting to inline our MapRow method and call ReadAsync() non-virtually most of the time
+
+
+Mapping function form:
+
+int index = 0;
+try
+{
+	var val1 = MapField1();
+
+	++index;
+	var val2 = MapField2();
+
+	++index;
+	var val3 = MapField3();
+
+	// trivial conversion is one that checks for DBNull and can't throw
+	var val4 = MapTrivialField4();
+
+	...
+
+	++index;
+	return new Type(val1, val2, val3, ...);
+}
+catch (Exception ex) when (index < nonTrivialFieldCount)
+{
+	Exception exception;
+	if (index == 0) { exception = Create(...); }
+	else if (index == 1) { exception = Create(...); }
+	...
+	else { exception = Create(...); }
+	throw exception;
+}
