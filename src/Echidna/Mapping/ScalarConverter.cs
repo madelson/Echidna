@@ -124,108 +124,28 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         Type to,
         NumericTypeFacts toNumericTypeFacts)
     {
-        if (from == typeof(decimal))
-        {
-            // decimal->integral conversion
-            if (!toNumericTypeFacts.IsFloatingPoint)
-            {
-                return GetDecimalToIntegralConversion();
-            }
-
-            return GetConversionWithRoundTripCheck();
-        }
-
-        if (to == typeof(decimal))
-        {
-            // integral->decimal can just use decimal's implicit conversions
-            if (!fromNumericTypeFacts.IsFloatingPoint)
-            {
-                return GetImplicitConversionOrDefault(from, to) 
-                    ?? throw Invariant.ShouldNeverGetHere();
-            }
-
-            return GetConversionWithRoundTripCheck();
-        }
-
-        // integral->integral conversions
-        if (!fromNumericTypeFacts.IsFloatingPoint && !toNumericTypeFacts.IsFloatingPoint)
+        // integral->integral conversions can take advantage of native int conversion opcodes
+        if (from.IsPrimitive && to.IsPrimitive && !fromNumericTypeFacts.IsFloatingPoint && !toNumericTypeFacts.IsFloatingPoint)
         {
             return GetIntegralToIntegralConversion();
         }
 
-        // safe integral/floating point->floating point conversions
+        // safe integral/floating point->floating point conversions can use native float conversion opcodes
         if (toNumericTypeFacts.IsFloatingPoint && toNumericTypeFacts.Size > fromNumericTypeFacts.Size)
         {
             return GetSafeConversionToFloatingPoint();
         }
 
+        // integral->decimal can just use decimal's implicit conversions
+        if (from.IsPrimitive && !fromNumericTypeFacts.IsFloatingPoint && to == typeof(decimal))
+        {
+            return GetImplicitConversionOrDefault(from, to)
+                ?? throw Invariant.ShouldNeverGetHere();
+        }
+
+        // For other methods, leverage Convert functions with a round-trip check to make sure the
+        // conversion was not lossy
         return GetConversionWithRoundTripCheck();
-
-        // todo revisit: this should be able to use round trip stuff
-        Conversion GetDecimalToIntegralConversion()
-        {
-            var truncateMethod = Helpers.GetMethod(() => decimal.Truncate(default));
-            var equalsMethod = GetEqualityOperatorOrDefault(typeof(decimal))!;
-            var exceptionConstructor = Helpers.GetConstructor(() => new NonIntegralValueTruncatedException());
-            var convertMethod = typeof(decimal).GetMethod("To" + to.Name, BindingFlags.Public | BindingFlags.Static, new[] { from })!;
-
-            return new Conversion(
-                w =>
-                {
-                    // first, truncate the value and make sure it does not change
-                    w.IL.Emit(Dup); // stack is [from, from]
-                    w.IL.Emit(Dup); // stack is [from, from, from]
-                    w.IL.Emit(Call, truncateMethod); // stack is [from, from, trunc]
-                    w.IL.Emit(Call, equalsMethod); // stack is [from, cmp]
-                    var successLabel = w.IL.DefineLabel();
-                    w.IL.Emit(Brtrue, successLabel); // stack is [from]
-                    w.IL.Emit(Newobj, exceptionConstructor);
-                    w.IL.Emit(Throw);
-                    w.IL.MarkLabel(successLabel);
-
-                    // then, convert the value (will throw if too large or too small)
-                    w.IL.Emit(Call, convertMethod); // stack is [converted]
-                },
-                IsSafe: false
-            );
-        }
-
-        Conversion GetConversionWithRoundTripCheck()
-        {
-            var convertMethod = ConvertMethods.Value[(from, to)];
-            var equalsOperator = from == typeof(decimal)
-                ? GetEqualityOperatorOrDefault(typeof(decimal))
-                : null;
-            var reverseConvertMethod = ConvertMethods.Value[(to, from)];
-            var exceptionConstructor = Helpers.GetConstructor(() => new LossyNumericConversionException());
-
-            return new Conversion(
-                w =>
-                {
-                    w.IL.Emit(Dup); // stack is [from, from]
-                    using var originalValue = w.UseLocal(from);
-                    w.IL.Emit(Stloc, originalValue); // stack is [from]
-                    w.IL.Emit(Call, convertMethod); // stack is [to]
-                    w.IL.Emit(Dup); // stack is [to, to]
-                    w.IL.Emit(Call, reverseConvertMethod); // stack is [to, backToFrom]
-                    w.IL.Emit(Ldloc, originalValue); // stack is [to, backToFrom, from]
-                    var successLabel = w.IL.DefineLabel();
-                    if (equalsOperator != null)
-                    {
-                        w.IL.Emit(Call, equalsOperator); // stack is [to]
-                        w.IL.Emit(Brtrue, successLabel);
-                    }
-                    else
-                    {
-                        w.IL.Emit(Beq, successLabel); // stack is [to]
-                    }
-                    w.IL.Emit(Newobj, exceptionConstructor);
-                    w.IL.Emit(Throw);
-                    w.IL.MarkLabel(successLabel);
-                },
-                IsSafe: false
-            );
-        }
 
         Conversion GetIntegralToIntegralConversion()
         {
@@ -260,6 +180,48 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 IsSafe: true
             );
         }
+
+        Conversion GetConversionWithRoundTripCheck()
+        {
+            // Generates code like the following:
+            // var converted = Convert.ToTo(from);
+            // var convertedBack = Convert.ToFrom(converted);
+            // if (!(convertedBack == converted)) { throw ... }
+
+            var convertMethod = ConvertMethods.Value[(from, to)];
+            var equalsOperator = from == typeof(decimal)
+                ? GetEqualityOperatorOrDefault(typeof(decimal))
+                : null;
+            var reverseConvertMethod = ConvertMethods.Value[(to, from)];
+            var exceptionConstructor = Helpers.GetConstructor(() => new LossyNumericConversionException());
+
+            return new Conversion(
+                w =>
+                {
+                    w.IL.Emit(Dup); // stack is [from, from]
+                    using var originalValue = w.UseLocal(from);
+                    w.IL.Emit(Stloc, originalValue); // stack is [from]
+                    w.IL.Emit(Call, convertMethod); // stack is [to]
+                    w.IL.Emit(Dup); // stack is [to, to]
+                    w.IL.Emit(Call, reverseConvertMethod); // stack is [to, backToFrom]
+                    w.IL.Emit(Ldloc, originalValue); // stack is [to, backToFrom, from]
+                    var successLabel = w.IL.DefineLabel();
+                    if (equalsOperator != null)
+                    {
+                        w.IL.Emit(Call, equalsOperator); // stack is [to]
+                        w.IL.Emit(Brtrue, successLabel);
+                    }
+                    else
+                    {
+                        w.IL.Emit(Beq, successLabel); // stack is [to]
+                    }
+                    w.IL.Emit(Newobj, exceptionConstructor);
+                    w.IL.Emit(Throw);
+                    w.IL.MarkLabel(successLabel);
+                },
+                IsSafe: false
+            );
+        }        
     }
 
     private static Conversion? GetImplicitConversionOrDefault(Type from, Type to)
