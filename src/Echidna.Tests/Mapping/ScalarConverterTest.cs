@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text.RegularExpressions;
 
 namespace Medallion.Data.Tests.Mapping;
 
@@ -103,7 +104,39 @@ internal class ScalarConverterTest
     [Test]
     public void TestCanConvertNumericValueToEnum()
     {
-        throw new NotImplementedException();
+        // enum with adjacent values
+        TestCanConvert((decimal)DateTimeKind.Utc, typeof(DateTimeKind), DateTimeKind.Utc);
+        TestCanConvert((byte)DateTimeKind.Utc, typeof(DateTimeKind), DateTimeKind.Utc);
+        TestCanConvert(-1, typeof(DateTimeKind), Error);
+        TestCanConvert(10.0, typeof(DateTimeKind), Error);
+
+        // flags enum with adjacent flags
+        TestCanConvert((float)(RegexOptions.IgnoreCase | RegexOptions.Multiline), typeof(RegexOptions), RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        TestCanConvert((short)(RegexOptions.RightToLeft | RegexOptions.Compiled | RegexOptions.CultureInvariant), typeof(RegexOptions), RegexOptions.RightToLeft | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        TestCanConvert(-1, typeof(RegexOptions), Error);
+        TestCanConvert(1U << 31, typeof(RegexOptions), Error);
+
+        // enum with non-adjacent values
+        foreach (var value in Enum.GetValues(typeof(EnumWithNonAdjacentValues)).Cast<EnumWithNonAdjacentValues>())
+        {
+            TestCanConvert((long)value, typeof(EnumWithNonAdjacentValues), value);
+        }
+        TestCanConvert(0, typeof(EnumWithNonAdjacentValues), Error);
+        TestCanConvert(4L, typeof(EnumWithNonAdjacentValues), Error);
+
+        // enum with non-adjacent flags
+        foreach (var value in Enum.GetValues(typeof(EnumWithNonAdjacentFlags)).Cast<EnumWithNonAdjacentFlags>())
+        {
+            TestCanConvert((long)value, typeof(EnumWithNonAdjacentFlags), value);
+        }
+        TestCanConvert(0, typeof(EnumWithNonAdjacentFlags), default(EnumWithNonAdjacentFlags));
+        TestCanConvert(1 << 1, typeof(EnumWithNonAdjacentFlags), Error);
+        TestCanConvert(1 << 6, typeof(EnumWithNonAdjacentFlags), Error);
+
+        // empty enums
+        TestCanConvert(0, typeof(EmptyEnum), Error);
+        TestCanConvert(0, typeof(EmptyFlagsEnum), default(EmptyFlagsEnum));
+        TestCanConvert(1, typeof(EmptyFlagsEnum), Error);
     }
 
     private static void TestCanConvert(object fromValue, Type to, object expected)
@@ -155,4 +188,28 @@ internal class ScalarConverterTest
             Assert.AreEqual(expected, result, Message, args);
         }
     }
+
+    private enum EnumWithNonAdjacentValues : long
+    {
+        A = long.MinValue,
+        B = -100,
+        C = 1,
+        D = 2,
+        E = 3,
+        F = 999,
+    }
+
+    [Flags]
+    private enum EnumWithNonAdjacentFlags : ushort
+    {
+        A = 1 << 3,
+        B = 1 << 5,
+        C = 1 << 7,
+        D = B | C,
+    }
+
+    private enum EmptyEnum : byte { }
+
+    [Flags]
+    private enum EmptyFlagsEnum : sbyte { }
 }

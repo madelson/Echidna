@@ -85,6 +85,12 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 return GetNumericToNumericConversion(from, fromNumericTypeFacts, to, toNumericTypeFacts);
             }
 
+            // numeric -> enum
+            if (to.IsEnum)
+            {
+                return GetNumericToEnumConversion(from, fromNumericTypeFacts, to);
+            }
+
             // numeric -> boolean
             if (to == typeof(bool))
             {
@@ -98,8 +104,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             var convertMethod = ConvertMethods.Value[(from, to)];
             return new(w => w.IL.Emit(Call, convertMethod), IsSafe: true);
         }
-
-        // todo enum
 
         if (from == typeof(DateTime) && to == typeof(DateOnly))
         {
@@ -245,6 +249,87 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 IsSafe: false
             );
         }        
+    }
+
+    private static Conversion GetNumericToEnumConversion(Type from, NumericTypeFacts fromNumericTypeFacts, Type to)
+    {
+        var underlyingType = Enum.GetUnderlyingType(to);
+        NumericTypeFacts underlyingNumericTypeFacts;
+        Conversion? conversionToUnderlyingType;
+        if (from == underlyingType)
+        {
+            underlyingNumericTypeFacts = fromNumericTypeFacts;
+            conversionToUnderlyingType = null;
+        }
+        else
+        {
+            underlyingNumericTypeFacts = SimpleNumericTypes[underlyingType];
+            conversionToUnderlyingType = GetNumericToNumericConversion(from, fromNumericTypeFacts, underlyingType, underlyingNumericTypeFacts);
+        }
+
+        var (definedRanges, definedFlags) = EnumValidationHelper.GetDefinedValues(to);
+
+        var exceptionConstructor = typeof(ArgumentOutOfRangeException).GetConstructor(Type.EmptyTypes) ?? throw Invariant.ShouldNeverGetHere();
+
+        void LoadEnumConstant(ILWriter writer, object value)
+        {
+            if (underlyingNumericTypeFacts.Size == 8)
+            {
+                writer.IL.Emit(Ldc_I8, underlyingNumericTypeFacts.IsUnsigned ? unchecked((long)(ulong)value) : (long)value);
+            }
+            else
+            {
+                writer.IL.Emit(Ldc_I4, underlyingNumericTypeFacts.IsUnsigned ? unchecked((int)Convert.ToUInt32(value)) : Convert.ToInt32(value));
+            }
+        }
+
+        return new(
+            w =>
+            {
+                conversionToUnderlyingType?.WriteConversion(w); // stack is [convertedFrom]
+
+                var successLabel = w.IL.DefineLabel();
+
+                if (definedRanges != null)
+                {
+                    foreach (var (start, end) in definedRanges)
+                    {
+                        if (Equals(start, end)) // single-value range => just check for equality
+                        {
+                            w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
+                            LoadEnumConstant(w, start); // stack is [convertedFrom, convertedFrom, start]
+                            w.IL.Emit(Beq, successLabel); // stack is [convertedFrom]
+                        }
+                        else
+                        {
+                            var nextConditionLabel = w.IL.DefineLabel();
+                            w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
+                            LoadEnumConstant(w, start); // stack is [convertedFrom, convertedFrom, start]
+                            w.IL.Emit(Blt, nextConditionLabel); // stack is [convertedFrom]
+                            w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
+                            LoadEnumConstant(w, end); // stack is [convertedFrom, convertedFrom, end]
+                            w.IL.Emit(Ble, successLabel); // stack is [convertedFrom]
+                            w.IL.MarkLabel(nextConditionLabel);
+                        }
+                    }
+                }
+                else
+                {
+                    Invariant.Require(definedFlags != null);
+
+                    w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
+                    LoadEnumConstant(w, definedFlags!); // stack is [convertedFrom, convertedFrom, flags]
+                    w.IL.Emit(Not); // stack is [convertedFrom, convertedFrom, ~flags]
+                    w.IL.Emit(And); // stack is [convertedFrom, convertedFrom & ~flags]
+                    w.IL.Emit(Brfalse, successLabel); // stack is [convertedFrom]
+                }
+
+                w.IL.Emit(Newobj, exceptionConstructor);
+                w.IL.Emit(Throw);
+                w.IL.MarkLabel(successLabel);
+            },
+            IsSafe: false
+        );
     }
 
     private static Conversion GetNumericToBooleanConversion(Type from, NumericTypeFacts fromNumericTypeFacts)
