@@ -85,10 +85,10 @@ internal class ScalarConverterTest
         var date = DateTimeOffset.Parse("2021-12-27T12:01:45.8267207-05:00");
 
         TestCanConvert(date, typeof(DateOnly), NoConversion); // can't convert from DateTimeOffset
-        TestCanConvert(date.Date, typeof(DateOnly), Error); // has time
-        TestCanConvert(date.Date.Date, typeof(DateOnly), new DateOnly(2021, 12, 7));
-        TestCanConvert(DateTime.SpecifyKind(date.Date.Date, DateTimeKind.Utc), typeof(DateOnly), Error); // has zone
-        TestCanConvert(DateTime.SpecifyKind(date.Date.Date, DateTimeKind.Local), typeof(DateOnly), Error); // has zone
+        TestCanConvert(date.DateTime, typeof(DateOnly), Error); // has time
+        TestCanConvert(date.Date, typeof(DateOnly), new DateOnly(2021, 12, 27));
+        TestCanConvert(DateTime.SpecifyKind(date.Date, DateTimeKind.Utc), typeof(DateOnly), Error); // has zone
+        TestCanConvert(DateTime.SpecifyKind(date.Date, DateTimeKind.Local), typeof(DateOnly), Error); // has zone
     }
 
     [Test]

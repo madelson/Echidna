@@ -92,6 +92,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             }
         }
 
+        // boolean -> numeric
         if (from == typeof(bool) && SimpleNumericTypes.ContainsKey(to))
         {
             var convertMethod = ConvertMethods.Value[(from, to)];
@@ -100,7 +101,18 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
 
         // todo enum
 
+        if (from == typeof(DateTime) && to == typeof(DateOnly))
+        {
+            var convertMethod = this.GetType().GetMethod(nameof(ToDateOnly), BindingFlags.NonPublic | BindingFlags.Static)!;
+            return new(w => w.IL.Emit(Call, convertMethod), IsSafe: false);
+        }
 
+        if (from == typeof(TimeSpan) && to == typeof(TimeOnly))
+        {
+            var convertMethod = typeof(TimeOnly).GetMethod(nameof(TimeOnly.FromTimeSpan), BindingFlags.Public | BindingFlags.Static, new[] { typeof(TimeSpan) })
+                ?? throw Invariant.ShouldNeverGetHere();
+            return new(w => w.IL.Emit(Call, convertMethod), IsSafe: false);
+        }
 
         return GetImplicitConversionOrDefault(from, to);
     }
@@ -205,8 +217,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 ? GetEqualityOperatorOrDefault(typeof(decimal))
                 : null;
             var reverseConvertMethod = ConvertMethods.Value[(to, from)];
-            var exceptionConstructor = Helpers.GetConstructor(() => new LossyNumericConversionException());
-
+            
             return new(
                 w =>
                 {
@@ -227,7 +238,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                     {
                         w.IL.Emit(Beq, successLabel); // stack is [to]
                     }
-                    w.IL.Emit(Newobj, exceptionConstructor);
+                    w.IL.Emit(Newobj, LossyConversionException.DefaultConstructor);
                     w.IL.Emit(Throw);
                     w.IL.MarkLabel(successLabel);
                 },
@@ -241,8 +252,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         var conversionToInt = from == typeof(int)
             ? null
             : GetNumericToNumericConversion(from, fromNumericTypeFacts, typeof(int), SimpleNumericTypes[typeof(int)]);
-        var exceptionConstructor = typeof(LossyNumericToBooleanConversionException).GetConstructor(Type.EmptyTypes)
-            ?? throw Invariant.ShouldNeverGetHere();
         return new(
             w =>
             {
@@ -252,7 +261,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 w.IL.Emit(And); // stack contains [fromAsInt, fromAsInt & ~1]
                 var successLabel = w.IL.DefineLabel();
                 w.IL.Emit(Brfalse, successLabel); // stack contains [fromAsInt]
-                w.IL.Emit(Newobj, exceptionConstructor);
+                w.IL.Emit(Newobj, LossyConversionException.DefaultConstructor);
                 w.IL.Emit(Throw);
                 w.IL.MarkLabel(successLabel);
             },
@@ -283,6 +292,28 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 );
     }
 
+    private static DateOnly ToDateOnly(DateTime dateTime)
+    {
+        if (dateTime.TimeOfDay != TimeSpan.Zero)
+        {
+            throw new LossyConversionException($"{typeof(DateTime)} can only be converted to {typeof(DateOnly)} if it has a {nameof(DateTime.TimeOfDay)} value of {TimeSpan.Zero}");
+        }
+        if (dateTime.Kind != DateTimeKind.Unspecified)
+        {
+            throw new LossyConversionException($"{typeof(DateTime)} can only be converted to {typeof(DateOnly)} it if has a {nameof(DateTime.Kind)} value of {DateTimeKind.Unspecified}. Found {dateTime.Kind}.");
+        }
+
+        return DateOnly.FromDateTime(dateTime);
+    }
+
+    private static MethodInfo? GetEqualityOperatorOrDefault(Type type) =>
+        type.GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .FirstOrDefault(
+                m => m.Name == "op_Equality"
+                    && m.ReturnType == typeof(bool)
+                    && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { type, type })
+            );
+
     public override bool Equals(object? obj) => obj is ScalarConverter that && this.EqualsNonNullable(that);
 
     public bool Equals(ScalarConverter? that) => that != null && this.EqualsNonNullable(that);
@@ -290,14 +321,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
     private bool EqualsNonNullable(ScalarConverter that) => true; // todo
 
     public override int GetHashCode() => 0;
-
-    public static MethodInfo? GetEqualityOperatorOrDefault(Type type) =>
-        type.GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .FirstOrDefault(
-                m => m.Name == "op_Equality"
-                    && m.ReturnType == typeof(bool)
-                    && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { type, type })
-            );
 
     // todo should contain ScalarConverter
     private readonly record struct CacheKey(Type From, Type To);
