@@ -76,21 +76,33 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         {
             return this.GetConversionToNullableValueTypeOrDefault(from, to, toNullableUnderlyingType);
         }
-
+ 
         if (SimpleNumericTypes.TryGetValue(from, out var fromNumericTypeFacts))
         {
+            // numeric -> numeric
             if (SimpleNumericTypes.TryGetValue(to, out var toNumericTypeFacts))
             {
-                return GetNumericTypeConversion(from, fromNumericTypeFacts, to, toNumericTypeFacts);
+                return GetNumericToNumericConversion(from, fromNumericTypeFacts, to, toNumericTypeFacts);
+            }
+
+            // numeric -> boolean
+            if (to == typeof(bool))
+            {
+                return GetNumericToBooleanConversion(from, fromNumericTypeFacts);
             }
         }
 
-        // cases
-        // primitive numeric -> safe
-        // primitive numeric -> checked: double -> float, (u)long -> float/double, (u)int -> float, unsigned <-> signed
-        // op_Implicit (public) on to or on from
+        if (from == typeof(bool) && SimpleNumericTypes.ContainsKey(to))
+        {
+            var convertMethod = ConvertMethods.Value[(from, to)];
+            return new(w => w.IL.Emit(Call, convertMethod), IsSafe: true);
+        }
 
-        throw new NotImplementedException();
+        // todo enum
+
+
+
+        return GetImplicitConversionOrDefault(from, to);
     }
 
     private static Conversion GetConversionToObject(Type from) =>
@@ -118,7 +130,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         );
     }
 
-    private static Conversion GetNumericTypeConversion(
+    private static Conversion GetNumericToNumericConversion(
         Type from,
         NumericTypeFacts fromNumericTypeFacts,
         Type to,
@@ -158,7 +170,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             if (!isSafe && fromNumericTypeFacts.IsUnsigned) { opCodeName.Append(".un"); }
             var opCode = OpCodes[opCodeName.ToString()];
 
-            return new Conversion(w => w.IL.Emit(opCode), IsSafe: isSafe);
+            return new(w => w.IL.Emit(opCode), IsSafe: isSafe);
         }
 
         Conversion GetSafeConversionToFloatingPoint()
@@ -169,7 +181,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             // unsigned -> float -> double
             // signed -> double
 
-            return new Conversion(
+            return new(
                 w =>
                 {
                     if (fromNumericTypeFacts.IsUnsigned) { w.IL.Emit(Conv_R_Un); }
@@ -195,7 +207,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             var reverseConvertMethod = ConvertMethods.Value[(to, from)];
             var exceptionConstructor = Helpers.GetConstructor(() => new LossyNumericConversionException());
 
-            return new Conversion(
+            return new(
                 w =>
                 {
                     w.IL.Emit(Dup); // stack is [from, from]
@@ -224,13 +236,37 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         }        
     }
 
+    private static Conversion GetNumericToBooleanConversion(Type from, NumericTypeFacts fromNumericTypeFacts)
+    {
+        var conversionToInt = from == typeof(int)
+            ? null
+            : GetNumericToNumericConversion(from, fromNumericTypeFacts, typeof(int), SimpleNumericTypes[typeof(int)]);
+        var exceptionConstructor = typeof(LossyNumericToBooleanConversionException).GetConstructor(Type.EmptyTypes)
+            ?? throw Invariant.ShouldNeverGetHere();
+        return new(
+            w =>
+            {
+                conversionToInt?.WriteConversion(w); // stack contains [fromAsInt]
+                w.IL.Emit(Dup); // stack contains [fromAsInt, fromAsInt]
+                w.IL.Emit(Ldc_I4, ~1); // stack contains [fromAsInt, fromAsInt, ~1]
+                w.IL.Emit(And); // stack contains [fromAsInt, fromAsInt & ~1]
+                var successLabel = w.IL.DefineLabel();
+                w.IL.Emit(Brfalse, successLabel); // stack contains [fromAsInt]
+                w.IL.Emit(Newobj, exceptionConstructor);
+                w.IL.Emit(Throw);
+                w.IL.MarkLabel(successLabel);
+            },
+            IsSafe: false
+        );
+    }
+
     private static Conversion? GetImplicitConversionOrDefault(Type from, Type to)
     {
         var conversionMethod = GetImplicitConversionOrDefault(to)
             ?? GetImplicitConversionOrDefault(from);
         if (conversionMethod == null) { return null; }
 
-        return new Conversion(
+        return new(
             w => w.IL.Emit(Call, conversionMethod),
             // Enumerate some well-known implicit conversions we can trust not to throw. Arbitrary
             // user-defined conversions could throw.

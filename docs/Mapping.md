@@ -49,6 +49,7 @@ When mapping scalars, Echidna allows for some deviation from exact type matching
 
 * Primitive numeric types can be mapped to each other so long as there is no loss of information. For example, a column whose type is `INT` can always be mapped to `long`. A column whose type is `BIG_INT` can be mapped to `int`, but if the mapper encounters a value outside the range of `int` an exception will be thrown.
 * Similarly, boolean columns can be mapped to numeric values 0 and 1, and numeric values 0 and 1 can be mapped to `bool` values.
+* Similarly, numeric columns can be mapped to Enum values so long as the value is defined for the enumeration
 * Similarly, `DateOnly` and `TimeOnly` values can be mapped from `DateTime` and `TimeSpan` values so long as the former has no time of day components and the latter is within the range of `TimeOnly`.
 * If a C# implicit conversion operator exists between the types, a mapping is allowed using that operator
 * Any type can be mapped to `object`

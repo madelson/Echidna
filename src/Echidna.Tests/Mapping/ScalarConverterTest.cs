@@ -1,5 +1,6 @@
 ﻿using Medallion.Data.Mapping;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace Medallion.Data.Tests.Mapping;
@@ -56,9 +57,53 @@ internal class ScalarConverterTest
     }
 
     [Test]
-    public void DebugTest()
+    public void TestCanConvertBetweenNumericAndBooleanTypes()
     {
-        TestCanConvert((decimal)0, typeof(double), 0.0);
+        var numericTypes = ScalarConverter.SimpleNumericTypes.Keys
+            .OrderBy(t => t.Name)
+            .ToArray();
+        
+        foreach (var numericType in numericTypes)
+        {
+            var zero = Activator.CreateInstance(numericType)!;
+            var one = numericType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static, new[] { typeof(string) })!
+                .Invoke(null, new[] { "1" })!;
+            var maxValue = numericType.GetField("MaxValue")!.GetValue(null)!;
+
+            TestCanConvert(false, numericType, zero);
+            TestCanConvert(true, numericType, one);
+
+            TestCanConvert(zero, typeof(bool), false);
+            TestCanConvert(one, typeof(bool), true);
+            TestCanConvert(maxValue, typeof(bool), Error);
+        }
+    }
+
+    [Test]
+    public void TestCanConvertUnspecifiedDateTimeToDateOnly()
+    {
+        var date = DateTimeOffset.Parse("2021-12-27T12:01:45.8267207-05:00");
+
+        TestCanConvert(date, typeof(DateOnly), NoConversion); // can't convert from DateTimeOffset
+        TestCanConvert(date.Date, typeof(DateOnly), Error); // has time
+        TestCanConvert(date.Date.Date, typeof(DateOnly), new DateOnly(2021, 12, 7));
+        TestCanConvert(DateTime.SpecifyKind(date.Date.Date, DateTimeKind.Utc), typeof(DateOnly), Error); // has zone
+        TestCanConvert(DateTime.SpecifyKind(date.Date.Date, DateTimeKind.Local), typeof(DateOnly), Error); // has zone
+    }
+
+    [Test]
+    public void TestCanConvertTimeSpanToTimeOnly()
+    {
+        TestCanConvert(TimeSpan.Zero, typeof(TimeOnly), TimeOnly.MinValue);
+        TestCanConvert(TimeOnly.MaxValue.ToTimeSpan(), typeof(TimeOnly), TimeOnly.MaxValue);
+        TestCanConvert(TimeSpan.FromTicks(TimeOnly.MinValue.Ticks - 1), typeof(TimeOnly), Error); // out of range
+        TestCanConvert(TimeSpan.FromTicks(TimeOnly.MaxValue.Ticks + 1), typeof(TimeOnly), Error); // out of range
+    }
+
+    [Test]
+    public void TestCanConvertNumericValueToEnum()
+    {
+        throw new NotImplementedException();
     }
 
     private static void TestCanConvert(object fromValue, Type to, object expected)
