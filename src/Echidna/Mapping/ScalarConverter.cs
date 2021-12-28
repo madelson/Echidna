@@ -11,23 +11,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
 {
     private static readonly MicroCache<CacheKey, Conversion?> Cache = new(maxCount: 5000);
 
-    internal static readonly IReadOnlyDictionary<Type, NumericTypeFacts> SimpleNumericTypes = new Dictionary<Type, NumericTypeFacts>() 
-    {
-        [typeof(sbyte)] = new(sizeof(sbyte)),
-        [typeof(byte)] = new(sizeof(byte), IsUnsigned: true),
-        [typeof(short)] = new(sizeof(short)),
-        [typeof(ushort)] = new(sizeof(ushort), IsUnsigned: true),
-        [typeof(int)] = new(sizeof(int)),
-        [typeof(uint)] = new(sizeof(uint), IsUnsigned: true),
-        [typeof(long)] = new(sizeof(long)),
-        [typeof(ulong)] = new(sizeof(ulong), IsUnsigned: true),
-
-        [typeof(float)] = new(sizeof(float), IsFloatingPoint: true),
-        [typeof(double)] = new(sizeof(double), IsFloatingPoint: true),
-
-        [typeof(decimal)] = new(sizeof(decimal)),
-    };
-
     // TODO lazy?
     private static readonly IReadOnlyDictionary<string, OpCode> OpCodes = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
         .Where(f => f.FieldType == typeof(OpCode))
@@ -77,10 +60,10 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             return this.GetConversionToNullableValueTypeOrDefault(from, to, toNullableUnderlyingType);
         }
  
-        if (SimpleNumericTypes.TryGetValue(from, out var fromNumericTypeFacts))
+        if (NumericTypeFacts.TryGetFor(from, out var fromNumericTypeFacts))
         {
             // numeric -> numeric
-            if (SimpleNumericTypes.TryGetValue(to, out var toNumericTypeFacts))
+            if (NumericTypeFacts.TryGetFor(to, out var toNumericTypeFacts))
             {
                 return GetNumericToNumericConversion(from, fromNumericTypeFacts, to, toNumericTypeFacts);
             }
@@ -99,7 +82,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         }
 
         // boolean -> numeric
-        if (from == typeof(bool) && SimpleNumericTypes.ContainsKey(to))
+        if (from == typeof(bool) && NumericTypeFacts.SimpleNumericTypes.Contains(to))
         {
             var convertMethod = ConvertMethods.Value[(from, to)];
             return new(w => w.IL.Emit(Call, convertMethod), IsSafe: true);
@@ -263,7 +246,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         }
         else
         {
-            underlyingNumericTypeFacts = SimpleNumericTypes[underlyingType];
+            underlyingNumericTypeFacts = NumericTypeFacts.For(underlyingType);
             conversionToUnderlyingType = GetNumericToNumericConversion(from, fromNumericTypeFacts, underlyingType, underlyingNumericTypeFacts);
         }
 
@@ -336,7 +319,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
     {
         var conversionToInt = from == typeof(int)
             ? null
-            : GetNumericToNumericConversion(from, fromNumericTypeFacts, typeof(int), SimpleNumericTypes[typeof(int)]);
+            : GetNumericToNumericConversion(from, fromNumericTypeFacts, typeof(int), NumericTypeFacts.For(typeof(int)));
         return new(
             w =>
             {
@@ -409,8 +392,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
 
     // todo should contain ScalarConverter
     private readonly record struct CacheKey(Type From, Type To);
-
-    internal readonly record struct NumericTypeFacts(int Size, bool IsFloatingPoint = false, bool IsUnsigned = false);
 
     public record Conversion(Action<ILWriter> WriteConversion, bool IsSafe);
 }

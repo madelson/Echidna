@@ -15,7 +15,7 @@ internal class ScalarConverterTest
     [Test]
     public void TestCanConvertBetweenNumericTypes()
     {
-        var numericTypes = ScalarConverter.SimpleNumericTypes.Keys
+        var numericTypes = NumericTypeFacts.SimpleNumericTypes
             .OrderBy(t => t.Name)
             .ToArray();
 
@@ -60,7 +60,7 @@ internal class ScalarConverterTest
     [Test]
     public void TestCanConvertBetweenNumericAndBooleanTypes()
     {
-        var numericTypes = ScalarConverter.SimpleNumericTypes.Keys
+        var numericTypes = NumericTypeFacts.SimpleNumericTypes
             .OrderBy(t => t.Name)
             .ToArray();
         
@@ -189,7 +189,7 @@ internal class ScalarConverterTest
         }
     }
 
-    private enum EnumWithNonAdjacentValues : long
+    internal enum EnumWithNonAdjacentValues : long
     {
         A = long.MinValue,
         B = -100,
@@ -200,7 +200,7 @@ internal class ScalarConverterTest
     }
 
     [Flags]
-    private enum EnumWithNonAdjacentFlags : ushort
+    internal enum EnumWithNonAdjacentFlags : ushort
     {
         A = 1 << 3,
         B = 1 << 5,
@@ -208,8 +208,8 @@ internal class ScalarConverterTest
         D = B | C,
     }
 
-    private enum EmptyEnum : byte { }
+    internal enum EmptyEnum : byte { }
 
     [Flags]
-    private enum EmptyFlagsEnum : sbyte { }
+    internal enum EmptyFlagsEnum : sbyte { }
 }
