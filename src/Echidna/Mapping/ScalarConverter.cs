@@ -7,6 +7,9 @@ using static System.Reflection.Emit.OpCodes;
 
 namespace Medallion.Data.Mapping;
 
+// TODO string -> char
+// TODO string -> enum (name only, not numbers). Should use string.Equals(value, constant, StringComparison.OrdinalIgnoreCase)
+
 internal class ScalarConverter : IEquatable<ScalarConverter>
 {
     private static readonly MicroCache<CacheKey, Conversion?> Cache = new(maxCount: 5000);
@@ -16,13 +19,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         .Where(f => f.FieldType == typeof(OpCode))
         .Select(f => (OpCode)f.GetValue(null)!)
         .ToDictionary(c => c.Name!);
-
-    private static readonly Lazy<IReadOnlyDictionary<(Type From, Type To), MethodInfo>> ConvertMethods = new(
-        () => typeof(Convert).GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Select(m => (Method: m, Parameters: m.GetParameters()))
-            .Where(t => t.Parameters.Length == 1 && t.Method.Name == "To" + t.Method.ReturnType.Name)
-            .ToDictionary(t => (t.Parameters[0].ParameterType, t.Method.ReturnType), t => t.Method)
-    );
 
     public bool CanConvert(
         Type from,
@@ -84,20 +80,19 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         // boolean -> numeric
         if (from == typeof(bool) && NumericTypeFacts.SimpleNumericTypes.Contains(to))
         {
-            var convertMethod = ConvertMethods.Value[(from, to)];
+            var convertMethod = MappingMethods.ConvertMethods[(from, to)];
             return new(w => w.IL.Emit(Call, convertMethod), IsSafe: true);
         }
 
         if (from == typeof(DateTime) && to == typeof(DateOnly))
         {
-            var convertMethod = this.GetType().GetMethod(nameof(ToDateOnly), BindingFlags.NonPublic | BindingFlags.Static)!;
+            var convertMethod = MappingMethods.DateTimeToDateOnly;
             return new(w => w.IL.Emit(Call, convertMethod), IsSafe: false);
         }
 
         if (from == typeof(TimeSpan) && to == typeof(TimeOnly))
         {
-            var convertMethod = typeof(TimeOnly).GetMethod(nameof(TimeOnly.FromTimeSpan), BindingFlags.Public | BindingFlags.Static, new[] { typeof(TimeSpan) })
-                ?? throw Invariant.ShouldNeverGetHere();
+            var convertMethod = MappingMethods.TimeSpanToTimeOnly;
             return new(w => w.IL.Emit(Call, convertMethod), IsSafe: false);
         }
 
@@ -114,7 +109,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         {
             conversionToNullableUnderlyingType = null;
         }
-        else if (!this.CanConvert(from, to, out conversionToNullableUnderlyingType))
+        else if (!this.CanConvert(from, toNullableUnderlyingType, out conversionToNullableUnderlyingType))
         {
             return null;
         }
@@ -199,11 +194,11 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
             // var convertedBack = Convert.ToFrom(converted);
             // if (!(convertedBack == converted)) { throw ... }
 
-            var convertMethod = ConvertMethods.Value[(from, to)];
+            var convertMethod = MappingMethods.ConvertMethods[(from, to)];
             var equalsOperator = from == typeof(decimal)
                 ? GetEqualityOperatorOrDefault(typeof(decimal))
                 : null;
-            var reverseConvertMethod = ConvertMethods.Value[(to, from)];
+            var reverseConvertMethod = MappingMethods.ConvertMethods[(to, from)];
             
             return new(
                 w =>
@@ -225,7 +220,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                     {
                         w.IL.Emit(Beq, successLabel); // stack is [to]
                     }
-                    w.IL.Emit(Newobj, LossyConversionException.DefaultConstructor);
+                    w.IL.Emit(Newobj, MappingMethods.LossyConversionExceptionConstructor);
                     w.IL.Emit(Throw);
                     w.IL.MarkLabel(successLabel);
                 },
@@ -251,8 +246,6 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
         }
 
         var (definedRanges, definedFlags) = EnumValidationHelper.GetDefinedValues(to);
-
-        var exceptionConstructor = typeof(ArgumentOutOfRangeException).GetConstructor(Type.EmptyTypes) ?? throw Invariant.ShouldNeverGetHere();
 
         void LoadEnumConstant(ILWriter writer, object value)
         {
@@ -288,9 +281,11 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                             var nextConditionLabel = w.IL.DefineLabel();
                             w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
                             LoadEnumConstant(w, start); // stack is [convertedFrom, convertedFrom, start]
+                            // TODO unsigned sometimes?
                             w.IL.Emit(Blt, nextConditionLabel); // stack is [convertedFrom]
                             w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
                             LoadEnumConstant(w, end); // stack is [convertedFrom, convertedFrom, end]
+                            // TODO unsigned sometimes?
                             w.IL.Emit(Ble, successLabel); // stack is [convertedFrom]
                             w.IL.MarkLabel(nextConditionLabel);
                         }
@@ -307,7 +302,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                     w.IL.Emit(Brfalse, successLabel); // stack is [convertedFrom]
                 }
 
-                w.IL.Emit(Newobj, exceptionConstructor);
+                w.IL.Emit(Newobj, MappingMethods.ArgumentOutOfRangeExceptionConstructor);
                 w.IL.Emit(Throw);
                 w.IL.MarkLabel(successLabel);
             },
@@ -329,7 +324,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 w.IL.Emit(And); // stack contains [fromAsInt, fromAsInt & ~1]
                 var successLabel = w.IL.DefineLabel();
                 w.IL.Emit(Brfalse, successLabel); // stack contains [fromAsInt]
-                w.IL.Emit(Newobj, LossyConversionException.DefaultConstructor);
+                w.IL.Emit(Newobj, MappingMethods.LossyConversionExceptionConstructor);
                 w.IL.Emit(Throw);
                 w.IL.MarkLabel(successLabel);
             },
@@ -360,20 +355,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 );
     }
 
-    private static DateOnly ToDateOnly(DateTime dateTime)
-    {
-        if (dateTime.TimeOfDay != TimeSpan.Zero)
-        {
-            throw new LossyConversionException($"{typeof(DateTime)} can only be converted to {typeof(DateOnly)} if it has a {nameof(DateTime.TimeOfDay)} value of {TimeSpan.Zero}");
-        }
-        if (dateTime.Kind != DateTimeKind.Unspecified)
-        {
-            throw new LossyConversionException($"{typeof(DateTime)} can only be converted to {typeof(DateOnly)} it if has a {nameof(DateTime.Kind)} value of {DateTimeKind.Unspecified}. Found {dateTime.Kind}.");
-        }
-
-        return DateOnly.FromDateTime(dateTime);
-    }
-
+    // TODO move to mapping methods
     private static MethodInfo? GetEqualityOperatorOrDefault(Type type) =>
         type.GetMethods(BindingFlags.Public | BindingFlags.Static)
             .FirstOrDefault(

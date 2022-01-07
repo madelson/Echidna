@@ -1,16 +1,17 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace Medallion.Data;
 
 internal static class Invariant
 {
     [Conditional("DEBUG")]
-    public static void Require(bool condition, string? message = null)
+    public static void Require(bool condition, [CallerArgumentExpression("condition")] string message = "")
     {
         if (!condition)
         {
-            throw new InvalidOperationException(message ?? "invariant violated");
+            throw new InvalidOperationException($"Invariant violated: {message}");
         }
     }
 

@@ -1,4 +1,32 @@
-﻿Mapping:
+﻿Templating:
+
+Add support for injecting IN clauses ala dapper. The trick is handling empty:
+	- SQL Server can use (SELECT TOP 0 NULL)
+	- MySql can use (SELECT NULL FROM (SELECT 0) WHERE FALSE)
+	- Postgres can use an array parameter (select * FROM unnest($1))
+	- Oracle can use (SELECT NULL FROM sys.dual WHERE 1 = 0)
+	- Could also use a SqlTemplate function $"select * from x where id {In(values)}". This would let Postgres use ALL/ANY
+
+Mapping:
+
+Mapping delegate should have a target, even if null because that's faster. For a dynamic row it might be a RowSchema object or similar but
+	in other cases it could just be null every time; it's still faster.
+
+Forbid Read<object> since object is ambiguous (could be Expando to support dynamic or any scalar) OR have Row type
+
+Consider avoiding assigning null to properties/fields where we don't need to (see https://github.com/DapperLib/Dapper/blob/main/Dapper/SqlMapper.Settings.cs)
+
+Row type
+	* Dynamic support?
+	* IReadOnlyDictionary<string, object> backed by array of values plus pointer to shared class which does name -> index lookups
+	* IReadOnlyList<object>
+	* Could leverage union array under the hood to avoid boxing (see https://github.com/dotnet/SqlClient/blob/main/src/Microsoft.Data.SqlClient/netcore/src/Microsoft/Data/SqlClient/SqlBuffer.cs)
+	* Could offer Get<T>(string|int) which doesn't box and leverages ScalarConverter under the hood. When we don't need the converter, we can either use
+		branching like this https://github.com/dotnet/SqlClient/blob/main/src/Microsoft.Data.SqlClient/netcore/src/Microsoft/Data/SqlClient/SqlDataReader.cs#L2796 or
+		we can use Unsafe.As<Storage, T>(ref storage) to reinterpret the storage as a T value.
+	* Could implement IDataRecord to permit "reflection" type operations
+	* Handles duplicate keys, returning the first index by default. GetValues(key) returns all values (returns a RowValues struct which is IROL<object> but also has Get<T>(int)).
+		Internal implementation stores 2 indices plus a nullable int[] of more indices to optimize common cases
 
 Whole-row types:
 * Records (constructor + property name-based binding)
@@ -8,12 +36,13 @@ Whole-row types:
 * ValueTuple (position-based binding or unique type-based binding)
 * Array (position + type binding)
 
-Scalars:
-* numeric <-> numeric always allowed, but all narrowing/truncating conversions are checked for overflow
-	- note: float/double/decimal will always lose something in the conversion; is this ok? Probably since the idea is there. We could still check max values
-	- OTOH if this was money that would be bad...
-* T <-> T?, but null to non-null is checked
-* 
+General:
+
+* Support direct sproc execution probably a separate method that just uses CommandBehavior.Sproc and takes in the parameters
+
+* Consider SingleRow optimization for ReadFirst (see https://github.com/DapperLib/Dapper/blob/main/Dapper/SqlMapper.Settings.cs)
+
+Other Ideas:
 
 Note: DbDataREader.ReadAsync() returns a completed task most of the time. For bulk reads therefore we can use a dynamicmethod
 for the read loop; we just generate for example a method like this:

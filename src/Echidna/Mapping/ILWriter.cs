@@ -1,8 +1,10 @@
 ﻿using System.Reflection.Emit;
-using static System.Reflection.Emit.OpCodes;
 
 namespace Medallion.Data.Mapping;
 
+/// <summary>
+/// Provides some tools on top of <see cref="ILGenerator"/> to make writing IL a bit easier
+/// </summary>
 internal class ILWriter
 {
     // maps locals to whether they are in use

@@ -139,6 +139,13 @@ internal class ScalarConverterTest
         TestCanConvert(1, typeof(EmptyFlagsEnum), Error);
     }
 
+    [Test]
+    public void TestCanConvertToNullable()
+    {
+        TestCanConvert(1, typeof(int?), 1);
+        TestCanConvert(2.0, typeof(int?), 2);
+    }
+
     private static void TestCanConvert(object fromValue, Type to, object expected)
     {
         var (convert, isSafe) = ConversionsCache.GetOrAdd(
@@ -154,6 +161,7 @@ internal class ScalarConverterTest
                         typeof(ScalarConverter).Module,
                         skipVisibility: true
                     );
+                    dynamicMethod.InitLocals = false;
                     var ilWriter = new ILWriter(dynamicMethod.GetILGenerator());
                     ilWriter.IL.Emit(OpCodes.Ldarg_0);
                     conversion.WriteConversion(ilWriter);

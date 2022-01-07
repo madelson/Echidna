@@ -49,6 +49,8 @@ public ref struct InterpolatedStringSqlTemplate
 
     public void AppendFormatted<T>(T value, string? format = null)
     {
+        // TODO convert null to "TypedNull" here for parameters so that we can have the proper dbtype
+
         if (value is SqlTemplate template)
         {
             if (format != null) { ThrowBadFormat(format); }
