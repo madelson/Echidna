@@ -265,6 +265,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                 conversionToUnderlyingType?.WriteConversion(w); // stack is [convertedFrom]
 
                 var successLabel = w.IL.DefineLabel();
+                var failureLabel = w.IL.DefineLabel();
 
                 if (definedRanges != null)
                 {
@@ -276,18 +277,14 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                             LoadEnumConstant(w, start); // stack is [convertedFrom, convertedFrom, start]
                             w.IL.Emit(Beq, successLabel); // stack is [convertedFrom]
                         }
-                        else
+                        else // multi-value range => check for inclusion
                         {
-                            var nextConditionLabel = w.IL.DefineLabel();
                             w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
                             LoadEnumConstant(w, start); // stack is [convertedFrom, convertedFrom, start]
-                            // TODO unsigned sometimes?
-                            w.IL.Emit(Blt, nextConditionLabel); // stack is [convertedFrom]
+                            w.IL.Emit(underlyingNumericTypeFacts.IsUnsigned ? Blt_Un : Blt, failureLabel); // stack is [convertedFrom]
                             w.IL.Emit(Dup); // stack is [convertedFrom, convertedFrom]
                             LoadEnumConstant(w, end); // stack is [convertedFrom, convertedFrom, end]
-                            // TODO unsigned sometimes?
-                            w.IL.Emit(Ble, successLabel); // stack is [convertedFrom]
-                            w.IL.MarkLabel(nextConditionLabel);
+                            w.IL.Emit(underlyingNumericTypeFacts.IsUnsigned ? Ble_Un : Ble, successLabel); // stack is [convertedFrom]
                         }
                     }
                 }
@@ -302,6 +299,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
                     w.IL.Emit(Brfalse, successLabel); // stack is [convertedFrom]
                 }
 
+                w.IL.MarkLabel(failureLabel);
                 w.IL.Emit(Newobj, MappingMethods.ArgumentOutOfRangeExceptionConstructor);
                 w.IL.Emit(Throw);
                 w.IL.MarkLabel(successLabel);

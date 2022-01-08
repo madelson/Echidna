@@ -139,6 +139,22 @@ internal class ScalarConverterTest
         TestCanConvert(1, typeof(EmptyFlagsEnum), Error);
     }
 
+    /// <summary>
+    /// This test ensures that we properly use unsigned comparison opcodes when comparing
+    /// unsigned enum values. An unsigned enum range of [int.MaxValue, int.MaxValue + 1] looks like
+    /// [int.MaxValue, -1] in signed world, so we get wonky behavior if we use signed comparisons
+    /// for such values.
+    /// </summary>
+    [Test]
+    public void TestCanValidateUnsignedEnum()
+    {
+        TestCanConvert((uint)UnsignedEnum.A, typeof(UnsignedEnum), UnsignedEnum.A);
+        TestCanConvert((uint)UnsignedEnum.B, typeof(UnsignedEnum), UnsignedEnum.B);
+        TestCanConvert((uint)UnsignedEnum.C, typeof(UnsignedEnum), UnsignedEnum.C);
+        TestCanConvert((uint)UnsignedEnum.D, typeof(UnsignedEnum), UnsignedEnum.D);
+        TestCanConvert((uint)UnsignedEnum.E, typeof(UnsignedEnum), UnsignedEnum.E);
+    }
+
     [Test]
     public void TestCanConvertToNullable()
     {
@@ -220,4 +236,6 @@ internal class ScalarConverterTest
 
     [Flags]
     internal enum EmptyFlagsEnum : sbyte { }
+
+    internal enum UnsignedEnum : uint { A = 0, B = 1, C = int.MaxValue, D = (uint)int.MaxValue + 1, E = uint.MaxValue }
 }
