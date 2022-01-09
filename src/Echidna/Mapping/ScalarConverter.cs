@@ -231,6 +231,7 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
 
     private static Conversion GetNumericToEnumConversion(Type from, NumericTypeFacts fromNumericTypeFacts, Type to)
     {
+        // TODO move this into EnumValidationHelper
         var underlyingType = Enum.GetUnderlyingType(to);
         NumericTypeFacts underlyingNumericTypeFacts;
         Conversion? conversionToUnderlyingType;
