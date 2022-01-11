@@ -10,8 +10,6 @@ namespace Medallion.Data.Mapping;
 
 internal abstract class CompositeTypeMappingStrategy
 {
-    public string Prefix { get; protected init; }
-
     protected static bool TryCreateFor(
         Type type,
         [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
@@ -35,13 +33,18 @@ internal abstract class CompositeTypeMappingStrategy
             return Success(dictionaryStrategy, out strategy, out errorMessage);
         }
 
-        return Error(dictionaryErrorMessage, out strategy, out errorMessage);
+        if (PocoTypeMappingStrategy.TryCreatePocoStrategyFor(type, nullabilityInfo, out var pocoStrategy, out var pocoErrorMessage))
+        {
+            return Success(pocoStrategy, out strategy, out errorMessage);
+        }
+
+        return Error(dictionaryErrorMessage + Environment.NewLine + pocoErrorMessage, out strategy, out errorMessage);
     }
 
     protected static bool Error(
-            string message,
-            [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
-            [NotNullWhen(returnValue: false)] out string? errorMessage)
+        string message,
+        [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
+        [NotNullWhen(returnValue: false)] out string? errorMessage)
     {
         strategy = null;
         errorMessage = message;
@@ -49,9 +52,9 @@ internal abstract class CompositeTypeMappingStrategy
     }
 
     protected static bool Success(
-            CompositeTypeMappingStrategy createdStrategy,
-            [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
-            [NotNullWhen(returnValue: false)] out string? errorMessage)
+        CompositeTypeMappingStrategy createdStrategy,
+        [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
+        [NotNullWhen(returnValue: false)] out string? errorMessage)
     {
         strategy = createdStrategy;
         errorMessage = null;
