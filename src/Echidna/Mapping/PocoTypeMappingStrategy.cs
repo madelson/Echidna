@@ -74,6 +74,8 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
         NullabilityInfo? nullabilityInfo,
         IEnumerable<ParameterOrProperty> parametersOrProperties)
     {
+        // TODO this will have to be revisited wrt generic types; see https://github.com/dotnet/runtime/issues/63555
+
         var result = new HashSet<ParameterOrProperty>();
 
         var genericArguments = type.GetGenericArguments();
