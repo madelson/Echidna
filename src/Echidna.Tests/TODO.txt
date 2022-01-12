@@ -36,6 +36,17 @@ Whole-row types:
 * ValueTuple (position-based binding or unique type-based binding)
 * Array (position + type binding)
 
+Source generation:
+* See https://github.com/dotnet/roslyn/blob/main/docs/features/source-generators.cookbook.md
+* Will generate a method in the source whose signature is MappingDelegate<SomeType> CreateMapperForSomeType(ReadOnlyMemory<Type> columnTypes, ReadOnlyMemoryType<ColumnNames>)
+	- delegate T MappingDelegate<T>(DbDataReader reader)
+* How does Echidna become aware of this? Probably the simplest way is to generate a module initializer (https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/proposals/csharp-9.0/module-initializers)
+	- registers each source-generated mapper with Echidna's global config on module init
+	- probably should also have an option to make this a manual call only / expose the manual call
+* How do users opt in?
+	- Class attribute [EchidnaGenerateMapper]
+	- Assembly attribute [assembly: EchidnaGenerateMapper(typeof((int, string)))]
+
 General:
 
 * Support direct sproc execution probably a separate method that just uses CommandBehavior.Sproc and takes in the parameters
