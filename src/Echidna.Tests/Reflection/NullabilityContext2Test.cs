@@ -10,8 +10,10 @@ using System.Text.RegularExpressions;
 
 namespace System.Reflection.Tests
 {
-    using NullabilityInfoContext = Medallion.Data.Tests.Mapping.NullabilityInfoContext2;
-    using NullabilityInfo = Medallion.Data.Tests.Mapping.NullabilityInfo2;
+    #region Setup
+    using NullabilityInfoContext = Medallion.Data.Tests.Reflection.NullabilityInfoContext;
+    using NullabilityInfo = Medallion.Data.Tests.Reflection.NullabilityInfo3;
+    using NullabilityState = Medallion.Data.Tests.Mapping.NullabilityState2;
 
     public class MemberDataAttribute : TestCaseSourceAttribute
     {
@@ -30,6 +32,7 @@ namespace System.Reflection.Tests
         public static void Null(object value) => NUnit.Framework.Assert.IsNull(value);
         public static void NotNull(object value) => NUnit.Framework.Assert.IsNotNull(value);
     }
+    #endregion
 
     public class NullabilityInfoContextTests
     {
@@ -50,10 +53,12 @@ namespace System.Reflection.Tests
             yield return new object[] { "FieldDisallowNull", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
             yield return new object[] { "FieldAllowNull", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
             yield return new object[] { "FieldDisallowNull2", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
-            yield return new object[] { "FieldAllowNull2", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
+            // changed: DisallowNull trumps AllowNull
+            yield return new object[] { "FieldAllowNull2", NullabilityState.NotNull, NullabilityState.NotNull, typeof(string) };
             yield return new object[] { "FieldNotNull", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
             yield return new object[] { "FieldMaybeNull", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
-            yield return new object[] { "FieldMaybeNull2", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
+            // changed: NotNull trumps MaybeNull
+            yield return new object[] { "FieldMaybeNull2", NullabilityState.NotNull, NullabilityState.NotNull, typeof(string) };
             yield return new object[] { "FieldNotNull2", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
         }
 
@@ -66,7 +71,19 @@ namespace System.Reflection.Tests
             Assert.Equal(readState, nullability.ReadState);
             Assert.Equal(writeState, nullability.WriteState);
             Assert.Equal(type, nullability.Type);
-            Assert.Empty(nullability.GenericTypeArguments);
+            // changed: Nullable<T> should have generic type arguments
+            var underlyingType = Nullable.GetUnderlyingType(field.FieldType);
+            if (underlyingType != null)
+            {
+                Assert.Equal(1, nullability.GenericTypeArguments.Length);
+                Assert.Equal(underlyingType, nullability.GenericTypeArguments[0].Type);
+                Assert.Equal(NullabilityState.NotNull, nullability.GenericTypeArguments[0].ReadState);
+                Assert.Equal(NullabilityState.NotNull, nullability.GenericTypeArguments[0].WriteState);
+            }
+            else
+            {
+                Assert.Empty(nullability.GenericTypeArguments);
+            }
             Assert.Null(nullability.ElementType);
         }
 
@@ -93,6 +110,7 @@ namespace System.Reflection.Tests
         public static IEnumerable<object[]> PropertyTestData()
         {
             yield return new object[] { "PropertyNullable", NullabilityState.Nullable, NullabilityState.Nullable, typeof(TypeWithNotNullContext) };
+            // COULD BE changed: read-only property should not have Unknown write state since we don't do the same for parameters
             yield return new object[] { "PropertyNullableReadOnly", NullabilityState.Nullable, NullabilityState.Unknown, typeof(TypeWithNotNullContext) };
             yield return new object[] { "PropertyUnknown", NullabilityState.Unknown, NullabilityState.Unknown, typeof(string) };
             yield return new object[] { "PropertyNonNullable", NullabilityState.NotNull, NullabilityState.NotNull, typeof(NullabilityInfoContextTests) };
@@ -106,10 +124,12 @@ namespace System.Reflection.Tests
             yield return new object[] { "PropertyDisallowNull", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
             yield return new object[] { "PropertyAllowNull", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
             yield return new object[] { "PropertyDisallowNull2", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
-            yield return new object[] { "PropertyAllowNull2", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
+            // changed: DisallowNull trumps AllowNull
+            yield return new object[] { "PropertyAllowNull2", NullabilityState.NotNull, NullabilityState.NotNull, typeof(string) };
             yield return new object[] { "PropertyNotNull", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
             yield return new object[] { "PropertyMaybeNull", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
-            yield return new object[] { "PropertyMaybeNull2", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
+            // changed: NotNull trumps MaybeNull
+            yield return new object[] { "PropertyMaybeNull2", NullabilityState.NotNull, NullabilityState.NotNull, typeof(string) };
             yield return new object[] { "PropertyNotNull2", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
         }
 
@@ -127,7 +147,19 @@ namespace System.Reflection.Tests
                 Assert.Equal(writeState, nullabilityContext.Create(property.SetMethod.GetParameters()[0]).WriteState);
             }
             Assert.Equal(type, nullability.Type);
-            Assert.Empty(nullability.GenericTypeArguments);
+            // changed: Nullable<T> should have generic type arguments
+            var underlyingType = Nullable.GetUnderlyingType(type);
+            if (underlyingType != null)
+            {
+                Assert.Equal(1, nullability.GenericTypeArguments.Length);
+                Assert.Equal(underlyingType, nullability.GenericTypeArguments[0].Type);
+                Assert.Equal(NullabilityState.NotNull, nullability.GenericTypeArguments[0].ReadState);
+                Assert.Equal(NullabilityState.NotNull, nullability.GenericTypeArguments[0].WriteState);
+            }
+            else
+            {
+                Assert.Empty(nullability.GenericTypeArguments);
+            }
             Assert.Null(nullability.ElementType);
         }
 
@@ -634,6 +666,15 @@ namespace System.Reflection.Tests
             NullabilityInfo nullability = nullabilityContext.Create(method.ReturnParameter);
             Assert.Equal(readState, nullability.ReadState);
             Assert.Null(nullability.ElementType);
+            // changed: Nullable<T> should have generic type arguments
+            var underlyingType = Nullable.GetUnderlyingType(method.ReturnParameter.ParameterType);
+            if (underlyingType != null)
+            {
+                Assert.Equal(1, nullability.GenericTypeArguments.Length);
+                Assert.Equal(NullabilityState.NotNull, nullability.GenericTypeArguments[0].ReadState);
+                Assert.Equal(NullabilityState.NotNull, nullability.GenericTypeArguments[0].WriteState);
+                nullability = nullability.GenericTypeArguments[0];
+            }
             Assert.Equal(param1, nullability.GenericTypeArguments[0].ReadState);
             Assert.Equal(param2, nullability.GenericTypeArguments[1].ReadState);
         }
@@ -759,7 +800,8 @@ namespace System.Reflection.Tests
             PropertyInfo publicGetPrivateSetNullableProperty = typeof(FileSystemEntry).GetProperty("Directory", flags)!;
             info = nullabilityContext.Create(publicGetPrivateSetNullableProperty);
             Assert.Equal(NullabilityState.NotNull, info.ReadState);
-            Assert.Equal(NullabilityState.Unknown, info.WriteState);
+            // changed: Directory is a ReadOnlySpan, so we don't need annotations to know it isn't nullable
+            Assert.Equal(NullabilityState.NotNull, info.WriteState);
 
             MethodInfo protectedNullableReturnMethod = type.GetMethod("GetPropertyImpl", flags)!;
             info = nullabilityContext.Create(protectedNullableReturnMethod.ReturnParameter);
@@ -768,8 +810,10 @@ namespace System.Reflection.Tests
 
             MethodInfo privateValueTypeReturnMethod = type.GetMethod("BinarySearch", flags)!;
             info = nullabilityContext.Create(privateValueTypeReturnMethod.ReturnParameter);
-            Assert.Equal(NullabilityState.Unknown, info.ReadState);
-            Assert.Equal(NullabilityState.Unknown, info.WriteState);
+            // changed: BinarySearch returns int, so we don't need annotations to know it isn't nullable
+            Assert.Equal(NullabilityState.NotNull, info.ReadState);
+            // changed: BinarySearch returns int, so we don't need annotations to know it isn't nullable
+            Assert.Equal(NullabilityState.NotNull, info.WriteState);
 
             Type regexType = typeof(Regex);
             FieldInfo protectedInternalNullableField = regexType.GetField("pattern", flags)!;
@@ -786,8 +830,10 @@ namespace System.Reflection.Tests
         public static IEnumerable<object[]> DifferentContextTestData()
         {
             yield return new object[] { "PropertyDisabled", NullabilityState.Unknown, NullabilityState.Unknown, typeof(string) };
-            yield return new object[] { "PropertyDisabledAllowNull", NullabilityState.Unknown, NullabilityState.Unknown, typeof(string) };
-            yield return new object[] { "PropertyDisabledMaybeNull", NullabilityState.Unknown, NullabilityState.Unknown, typeof(string) };
+            // changed: AllowNull still respected in #nullable disabled context
+            yield return new object[] { "PropertyDisabledAllowNull", NullabilityState.Unknown, NullabilityState.Nullable, typeof(string) };
+            // changed: MaybeNull still respected in #nullable disabled context
+            yield return new object[] { "PropertyDisabledMaybeNull", NullabilityState.Nullable, NullabilityState.Unknown, typeof(string) };
             yield return new object[] { "PropertyEnabledAllowNull", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
             yield return new object[] { "PropertyEnabledNotNull", NullabilityState.NotNull, NullabilityState.Nullable, typeof(string) };
             yield return new object[] { "PropertyEnabledMaybeNull", NullabilityState.Nullable, NullabilityState.NotNull, typeof(string) };
@@ -907,10 +953,20 @@ namespace System.Reflection.Tests
             Assert.Equal(enumState, enumerabeNullability.ReadState);
             NullabilityInfo tupleNullability = enumerabeNullability.GenericTypeArguments[0];
             Assert.Equal(outerTupleState, tupleNullability.ReadState);
+            // changed: Nullable<T> has generic arguments
+            if (Nullable.GetUnderlyingType(tupleNullability.Type) is not null)
+            {
+                tupleNullability = tupleNullability.GenericTypeArguments[0];
+            }
             Assert.Equal(innerTupleState, tupleNullability.GenericTypeArguments[0].ReadState);
             Assert.Equal(intState, tupleNullability.GenericTypeArguments[1].ReadState);
             NullabilityInfo valueTupleNullability = tupleNullability.GenericTypeArguments[0];
             Assert.Equal(innerTupleState, valueTupleNullability.ReadState);
+            // changed: Nullable<T> has generic arguments
+            if (Nullable.GetUnderlyingType(valueTupleNullability.Type) is not null)
+            {
+                valueTupleNullability = valueTupleNullability.GenericTypeArguments[0];
+            }
             Assert.Equal(stringState, valueTupleNullability.GenericTypeArguments[0].ReadState);
             Assert.Equal(objectState, valueTupleNullability.GenericTypeArguments[1].ReadState);
         }
@@ -965,6 +1021,11 @@ namespace System.Reflection.Tests
             var tupleInfo = nullabilityContext.Create(testType.GetField(fieldName)!);
 
             Assert.Equal(fieldState, tupleInfo.ReadState);
+            // changed: Nullable<T> has generic arguments
+            if (Nullable.GetUnderlyingType(tupleInfo.Type) is not null)
+            {
+                tupleInfo = tupleInfo.GenericTypeArguments[0];
+            }
             Assert.Equal(param1, tupleInfo.GenericTypeArguments[0].ReadState);
             Assert.Equal(param2, tupleInfo.GenericTypeArguments[1].ReadState);
         }
@@ -1118,7 +1179,7 @@ namespace System.Reflection.Tests
     public struct GenericStruct<T, Y> { }
 
     internal class GenericTest<T>
-    {
+    {    
 #nullable disable
         public T PropertyUnknown { get; set; }
         protected T[] PropertyArrayUnknown { get; set; }
