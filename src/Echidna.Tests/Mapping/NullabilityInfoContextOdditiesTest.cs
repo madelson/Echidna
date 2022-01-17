@@ -72,7 +72,7 @@ internal class NullabilityInfoContextOdditiesTest
         var context = new NullabilityInfoContext();
         var directoryInfo = context.Create(typeof(FileSystemEntry).GetProperty("Directory")!);
         Assert.AreEqual(NullabilityState.NotNull, directoryInfo.ReadState);
-        Assert.AreEqual(NullabilityState.Unknown, directoryInfo.WriteState);
+        Assert.AreEqual(NullabilityState.Unknown, directoryInfo.WriteState); // should be NotNull
     }
 
     // replicates https://github.com/dotnet/runtime/issues/63848
@@ -131,5 +131,61 @@ internal class NullabilityInfoContextOdditiesTest
             .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new[] { typeof(SerializationInfo), typeof(StreamingContext) })!;
         var info = context.Create(constructor.GetParameters()[0]);
         Assert.AreEqual(NullabilityState.Nullable, info.WriteState); // should be Unknown
+    }
+
+    // copied from https://github.com/graphql-dotnet/graphql-dotnet/blob/f190a1566f61f29e1909fe6b7dcbb7140c404908/src/GraphQL.Tests/NRTTests.cs
+    [Test]
+    public void TestNRTField2()
+    {
+        var type = typeof(NullableTestClass);
+        var field = type.GetMethod("Field2")!;
+        var returnParameter = field.ReturnParameter;
+        var context = new NullabilityInfoContext();
+        var info = context.Create(returnParameter);
+
+        //test 1
+        Assert.AreEqual(typeof(Tuple<Tuple<string, string>, string>), info.Type);
+        Assert.AreEqual(NullabilityState.NotNull, info.ReadState);
+        Assert.AreEqual(2, info.GenericTypeArguments.Length);
+        Assert.AreEqual(2, info.GenericTypeArguments.Length);
+
+        //test 2
+        Assert.AreEqual(typeof(Tuple<string, string>), info.GenericTypeArguments[0].Type);
+        Assert.AreEqual(NullabilityState.NotNull, info.GenericTypeArguments[0].ReadState);
+        Assert.AreEqual(2, info.GenericTypeArguments[0].GenericTypeArguments.Length);
+
+        //test 3
+        Assert.AreEqual(typeof(string), info.GenericTypeArguments[0].GenericTypeArguments[0].Type);
+        Assert.AreEqual(NullabilityState.Nullable, info.GenericTypeArguments[0].GenericTypeArguments[0].ReadState);
+
+        //test 4
+        Assert.AreEqual(typeof(string), info.GenericTypeArguments[0].GenericTypeArguments[1].Type);
+        Assert.AreEqual(NullabilityState.Nullable, info.GenericTypeArguments[0].GenericTypeArguments[1].ReadState);
+
+        //test 5
+        Assert.AreEqual(typeof(string), info.GenericTypeArguments[1].Type);
+        Assert.AreEqual(NullabilityState.Nullable, info.GenericTypeArguments[1].ReadState); // should be NotNull
+    }
+
+    public class NullableTestClass
+    {
+        public static Tuple<Tuple<string?, string?>, string> Field2() => null!;
+        /*             1      2      3        4         5
+         *
+         * 1: Tuple<Tuple<string, string>, string>
+         *    non-null
+         *
+         * 2: Tuple<string, string>
+         *    non-null
+         *
+         * 3: string
+         *    nullable
+         *
+         * 4: string
+         *    nullable
+         *
+         * 5: string
+         *    non-null
+         */
     }
 }
