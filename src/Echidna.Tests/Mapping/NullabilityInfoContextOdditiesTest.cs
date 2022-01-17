@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO.Enumeration;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -104,7 +105,7 @@ internal class NullabilityInfoContextOdditiesTest
     [Test]
     public void TestIndexerPropertyDoesNotRespectCodeAnalysisAttribute()
     {
-        new HasIndexer()["a"] = null;
+        // new HasIndexer()["a"] = null;
 
         var context = new NullabilityInfoContext();
 
@@ -119,5 +120,16 @@ internal class NullabilityInfoContextOdditiesTest
             get => default!;
             set { }
         }
+    }
+
+    // replicates https://github.com/dotnet/runtime/issues/63853
+    [Test]
+    public void TestPrivateConstructorParametersInPublicOnlyAssemblyAreUnknown()
+    {
+        var context = new NullabilityInfoContext();
+        var constructor = typeof(IndexOutOfRangeException)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new[] { typeof(SerializationInfo), typeof(StreamingContext) })!;
+        var info = context.Create(constructor.GetParameters()[0]);
+        Assert.AreEqual(NullabilityState.Nullable, info.WriteState); // should be Unknown
     }
 }
