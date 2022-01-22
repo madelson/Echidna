@@ -53,6 +53,8 @@ General:
 
 * Consider SingleRow optimization for ReadFirst (see https://github.com/DapperLib/Dapper/blob/main/Dapper/SqlMapper.Settings.cs)
 
+* FUTURE: can we leverage StringSyntaxAttribute (https://github.com/dotnet/runtime/issues/62505) for SQL?
+
 Other Ideas:
 
 Note: DbDataREader.ReadAsync() returns a completed task most of the time. For bulk reads therefore we can use a dynamicmethod
