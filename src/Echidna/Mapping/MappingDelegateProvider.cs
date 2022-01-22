@@ -20,9 +20,9 @@ internal static class MappingDelegateProvider
 
         var factory = (MappingDelegateFactory<TDestination>)Cache.GetOrAdd((readerType, schema, destinationType), static key =>
         {
-            var createdDelegate = MappingDelegateCreator.CreateMappingDelegate(key.ReaderType, key.Schema, key.DestinationType);
+            var mappingDelegateInfo = MappingDelegateCreator.CreateMappingDelegate(key.ReaderType, key.Schema, key.DestinationType);
 
-            return Activator.CreateInstance(typeof(MappingDelegateFactory<,>).MakeGenericType(key.ReaderType, key.DestinationType), createdDelegate)!;
+            return Activator.CreateInstance(typeof(MappingDelegateFactory<,>).MakeGenericType(key.ReaderType, key.DestinationType), mappingDelegateInfo)!;
         });
 
         return factory.CreateDelegate(reader);
@@ -36,18 +36,27 @@ internal static class MappingDelegateProvider
     private sealed class MappingDelegateFactory<TReader, TDestination> : MappingDelegateFactory<TDestination>
         where TReader : DbDataReader
     {
-        private readonly Func<TReader, TDestination> _delegate;
+        private readonly MappingDelegate<TReader, TDestination> _delegate;
+        private readonly MappingDelegateErrorHandler _errorHandler;
 
-        public MappingDelegateFactory(Func<TReader, TDestination> @delegate)
+        public MappingDelegateFactory(MappingDelegateInfo delegateInfo)
         {
-            this._delegate = @delegate;
+            this._delegate = (MappingDelegate<TReader, TDestination>)delegateInfo.Delegate;
+            this._errorHandler = delegateInfo.ErrorHandler;
         }
 
         public override Func<TDestination> CreateDelegate(DbDataReader reader)
         {
             var typedReader = (TReader)reader;
-            var @delegate = this._delegate; // store in local to avoid extra indirection through this
-            return () => @delegate(typedReader);
+            // store in locals to avoid extra indirection through this
+            var @delegate = this._delegate;
+            var errorHandler = this._errorHandler;
+            return () =>
+            {
+                var columnIndex = -1;
+                try { return @delegate(typedReader, ref columnIndex); }
+                catch (Exception ex) { throw errorHandler.CreateException(ex, columnIndex); }
+            };
         }
     }
 }

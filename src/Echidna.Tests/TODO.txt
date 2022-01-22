@@ -9,9 +9,6 @@ Add support for injecting IN clauses ala dapper. The trick is handling empty:
 
 Mapping:
 
-Mapping delegate should have a target, even if null because that's faster. For a dynamic row it might be a RowSchema object or similar but
-	in other cases it could just be null every time; it's still faster.
-
 Forbid Read<object> since object is ambiguous (could be Expando to support dynamic or any scalar) OR have Row type
 
 Leverage C#7 nullabilityinfocontext as that evolves.

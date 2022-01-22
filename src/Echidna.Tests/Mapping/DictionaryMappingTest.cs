@@ -81,7 +81,7 @@ internal class DictionaryMappingTest
 
         var mapper = MappingDelegateProvider.GetMappingDelegate<Dictionary<string, int?>>(reader.Value);
         var ex = Assert.Throws<ColumnMappingException>(() => mapper());
-        Assert.That(ex!.Message, Does.Contain("column 1 (System.String b) value 'b'"));
+        Assert.That(ex!.Message, Does.Contain("column 1 (System.String b)"));
         Assert.IsInstanceOf<InvalidCastException>(ex.InnerException);
     }
 

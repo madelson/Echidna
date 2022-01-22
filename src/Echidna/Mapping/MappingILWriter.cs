@@ -6,6 +6,10 @@ namespace Medallion.Data.Mapping;
 
 internal class MappingILWriter : ILWriter
 {
+    // 0 is unused target
+    private const int ReaderArgumentIndex = 1;
+    private const int ColumnIndexRefArgumentIndex = 2;
+
     private readonly Type _readerType;
 
     public MappingILWriter(ILGenerator il, Type readerType) : base(il)
@@ -13,19 +17,14 @@ internal class MappingILWriter : ILWriter
         Invariant.Require(!readerType.IsAbstract);
 
         this._readerType = readerType;
-    }
-
-    public LocalBuilder? CurrentColumnVariable { get; private set; }
+    } 
 
     public void Emit(ColumnValueRetrieval retrieval)
     {
-        // If we're doing column-based error handling, update the indicator variable to
-        // point to the current column index
-        if (this.CurrentColumnVariable != null)
-        {
-            EmitPushColumnIndex(); // stack is [index]
-            this.IL.Emit(Stloc, this.CurrentColumnVariable!); // stack is []
-        }
+        // Update the indicator variable to point to the current column index
+        this.IL.Emit(Ldarg, ColumnIndexRefArgumentIndex); // stack is [&columnIndex]
+        EmitPushColumnIndex(); // stack is [&columnIndex, index]
+        this.IL.Emit(Stind_I4); // stack is []
 
         // TODO INullable types?
         
@@ -126,35 +125,5 @@ internal class MappingILWriter : ILWriter
         }
     }
 
-    public void EmitPushReader() => this.IL.Emit(Ldarg_0);
-
-    public CurrentColumnIndexScope UseCurrentColumnIndexLocal()
-    {
-        var localScope = this.UseLocal(typeof(int));
-        this.CurrentColumnVariable = localScope;
-        return new(this, localScope);
-    }
-
-    public ref struct CurrentColumnIndexScope
-    {
-        private MappingILWriter? _writer;
-        private LocalScope _scope;
-
-        public CurrentColumnIndexScope(MappingILWriter writer, LocalScope scope)
-        {
-            this._writer = writer;
-            this._scope = scope;
-        }
-
-        public void Dispose()
-        {
-            var writer = Interlocked.Exchange(ref this._writer, null);
-            if (writer != null)
-            {
-                Invariant.Require(writer.CurrentColumnVariable == (LocalBuilder)this._scope);
-                writer.CurrentColumnVariable = null;
-                this._scope.Dispose();
-            }
-        }
-    }
+    public void EmitPushReader() => this.IL.Emit(Ldarg, ReaderArgumentIndex);
 }

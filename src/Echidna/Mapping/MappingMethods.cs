@@ -21,8 +21,6 @@ internal static class MappingMethods
 
     public static readonly ConstructorInfo LossyConversionExceptionConstructor,
         ArgumentOutOfRangeExceptionConstructor,
-        ColumnMappingExceptionConstructor,
-        MappingExceptionConstructor,
         SqlNullValueExceptionDefaultConstructor;
 
     public static readonly PropertyInfo StringComparerOrdinalIgnoreCaseProperty;
@@ -45,8 +43,6 @@ internal static class MappingMethods
         
         LossyConversionExceptionConstructor = typeof(LossyConversionException).GetConstructor(Type.EmptyTypes)!;
         ArgumentOutOfRangeExceptionConstructor = typeof(ArgumentOutOfRangeException).GetConstructor(Type.EmptyTypes)!;
-        ColumnMappingExceptionConstructor = typeof(ColumnMappingException).GetConstructors().Single();
-        MappingExceptionConstructor = typeof(MappingException).GetConstructors().Single();
         SqlNullValueExceptionDefaultConstructor = typeof(SqlNullValueException).GetConstructor(Type.EmptyTypes)!;
 
         StringComparerOrdinalIgnoreCaseProperty = typeof(StringComparer).GetProperty(nameof(StringComparer.OrdinalIgnoreCase), BindingFlags.Public | BindingFlags.Static)!;

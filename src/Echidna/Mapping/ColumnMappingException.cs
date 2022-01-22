@@ -10,19 +10,19 @@ namespace Medallion.Data.Mapping;
 
 internal sealed class ColumnMappingException : Exception
 {
-    public ColumnMappingException(Exception innerException, DbDataReader reader, int columnIndex, string destinationDescriptor)
-        : base($"Could not map column {columnIndex} ({reader.GetFieldType(columnIndex)} {reader.GetName(columnIndex)}){GetValueString(reader, columnIndex)} to {destinationDescriptor}. See inner exception for details.", innerException)
+    public ColumnMappingException(Exception innerException, int columnIndex, Type columnType, string columnName, string destinationDescriptor)
+        : base($"Could not map column {columnIndex} ({columnType} {columnName}) to {destinationDescriptor}. See inner exception for details.", innerException)
     {
     }
 
+    // todo should we bring this back if not using sequential only readers?
+    //private static string GetValueString(DbDataReader reader, int columnIndex)
+    //{
+    //    object value;
+    //    try { value = reader.GetValue(columnIndex); }
+    //    // will throw for CommandBehavior.SequentialAccess. In that case we simply don't capture the original column value
+    //    catch { return string.Empty; }
 
-    private static string GetValueString(DbDataReader reader, int columnIndex)
-    {
-        object value;
-        try { value = reader.GetValue(columnIndex); }
-        // will throw for CommandBehavior.SequentialAccess. In that case we simply don't capture the original column value
-        catch { return string.Empty; }
-
-        return $" value '{(value == null || value == DBNull.Value ? "NULL" : value)}'";
-    }
+    //    return $" value '{(value == null || value == DBNull.Value ? "NULL" : value)}'";
+    //}
 }
