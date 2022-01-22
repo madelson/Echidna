@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 
 namespace Medallion.Data.Tests.Mapping;
 
+using NullabilityState = NullabilityState2;
+
 public sealed class NullabilityInfoContext2
 {
     private const string CompilerServicesNameSpace = "System.Runtime.CompilerServices";
@@ -112,7 +114,17 @@ public sealed class NullabilityInfoContext2
 
             if (metaParameter != null)
             {
-                CheckGenericParameters(nullability, metaMethod, metaParameter.ParameterType);
+                if (method != metaMethod 
+                    && metaParameter.ParameterType.IsGenericTypeParameter
+                    && method.ReflectedType != null
+                    && (
+                        !method.ReflectedType.IsConstructedGenericType
+                        || method.ReflectedType.GetGenericTypeDefinition() != metaMethod.DeclaringType
+                    ))
+                {
+                }
+
+                CheckGenericParameters(nullability, metaMethod, metaParameter.ParameterType, method);
             }
         }
     }
@@ -369,8 +381,20 @@ public sealed class NullabilityInfoContext2
             {
                 state = GetNullableContext(memberInfo);
             }
-
-            if (type.IsArray)
+            
+            if (type.IsGenericParameter
+                && !type.GenericParameterAttributes.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint))
+            {
+                if (state == NullabilityState.Nullable)
+                {
+                    state = NullabilityState.NullableIfGenericArgumentIsNonNullableReferenceType;
+                }
+                else if (state == NullabilityState.NotNull)
+                {
+                    state = NullabilityState.NotNullIfGenericArgumentIsNonNullableReferenceType;
+                }
+            }
+            else if (type.IsArray)
             {
                 elementState = GetNullabilityInfo(memberInfo, type.GetElementType()!, customAttributes, index + 1);
             }
@@ -449,7 +473,7 @@ public sealed class NullabilityInfoContext2
 
         if (metaType != null)
         {
-            CheckGenericParameters(nullability, metaMember!, metaType);
+            CheckGenericParameters(nullability, metaMember!, metaType, memberInfo);
         }
     }
 
@@ -474,17 +498,19 @@ public sealed class NullabilityInfoContext2
         return property.GetSetMethod(true)!.GetParameters()[0].ParameterType;
     }
 
-    private void CheckGenericParameters(NullabilityInfo2 nullability, MemberInfo metaMember, Type metaType)
+    private void CheckGenericParameters(NullabilityInfo2 nullability, MemberInfo metaMember, Type metaType, MemberInfo originalMember)
     {
         if (metaType.IsGenericParameter)
         {
             NullabilityState state = nullability.ReadState;
 
+            // issue: not respecting type constraints (class, struct, etc) in interpretation
             if (state == NullabilityState.NotNull && !ParseNullableState(metaType.GetCustomAttributesData(), 0, ref state))
             {
                 state = GetNullableContext(metaType);
             }
 
+            // issue: overrides rather than constrains
             nullability.ReadState = state;
             nullability.WriteState = state;
         }
@@ -574,4 +600,23 @@ public sealed class NullabilityInfo2
     /// If the member type is a generic type, gives the array of <see cref="NullabilityInfo" /> for each type parameter
     /// </summary>
     public NullabilityInfo2[] GenericTypeArguments { get; }
+}
+
+public enum NullabilityState2
+{
+    //
+    // Summary:
+    //     Nullability context not enabled (oblivious).
+    Unknown,
+    //
+    // Summary:
+    //     Non-nullable value or reference type.
+    NotNull,
+    //
+    // Summary:
+    //     Nullable value or reference type.
+    Nullable,
+
+    NotNullIfGenericArgumentIsNonNullableReferenceType,
+    NullableIfGenericArgumentIsNonNullableReferenceType
 }

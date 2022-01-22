@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -12,7 +13,7 @@ namespace Medallion.Data.Tests.Reflection;
 // test cases:
 // interface inheritance
 // private member that is generic member
-// private constructor (not method base)
+// private constructor (not method info)
 // generic method in generic type
 // nullablepubliconly but has other system.diagnostic attrs
 // MaybeNull + NotNull, other combinations
@@ -30,8 +31,8 @@ using NullabilityState = Medallion.Data.Tests.Mapping.NullabilityState2;
 internal class NullabilityInfoContext
 {
     private const string CompilerServicesNameSpace = "System.Runtime.CompilerServices";
-    private readonly Dictionary<Module, NotAnnotatedStatus> _publicOnlyModules = new();
-    private readonly Dictionary<MemberInfo, NullabilityState> _context = new();
+    private readonly Dictionary<Module, NotAnnotatedStatus> _publicOnlyModulesCache = new();
+    private readonly Dictionary<MemberInfo, NullabilityState> _contextCache = new();
 
     internal static bool IsSupported { get; } =
         AppContext.TryGetSwitch("System.Reflection.NullabilityInfoContext.IsSupported", out bool isSupported) ? isSupported : true;
@@ -62,8 +63,8 @@ internal class NullabilityInfoContext
         EnsureIsSupported();
 
         var nullability = new NullabilityInfo(parameterInfo.ParameterType);
+        var stateParser = NullabilityStateParser.Create(this, parameterInfo.Member, parameterInfo);
         var metaParameter = GetMetaParameter(parameterInfo);
-        var stateParser = CreateStateParser(metaParameter.Member, metaParameter);
         PopulateNullabilityInfo(nullability, stateParser, metaParameter.ParameterType, parameterInfo.Member.ReflectedType);
 
         return nullability;
@@ -87,8 +88,8 @@ internal class NullabilityInfoContext
         EnsureIsSupported();
 
         var nullability = new NullabilityInfo(propertyInfo.PropertyType);
+        var stateParser = NullabilityStateParser.Create(this, propertyInfo);
         var metaProperty = (PropertyInfo)GetMemberMetadataDefinition(propertyInfo);
-        var stateParser = CreateStateParser(metaProperty);
         PopulateNullabilityInfo(nullability, stateParser, metaProperty.PropertyType, propertyInfo.ReflectedType);
 
         // use Unknown for invalid property states (TODO this is somewhat inconsistent with parameters, esp. return parameters)
@@ -116,8 +117,8 @@ internal class NullabilityInfoContext
         EnsureIsSupported();
 
         var nullability = new NullabilityInfo(eventInfo.EventHandlerType!);
+        var stateParser = NullabilityStateParser.Create(this, eventInfo);
         var metaEvent = (EventInfo)GetMemberMetadataDefinition(eventInfo);
-        var stateParser = CreateStateParser(metaEvent);
         PopulateNullabilityInfo(nullability, stateParser, metaEvent.EventHandlerType!, eventInfo.ReflectedType);
 
         return nullability;
@@ -141,30 +142,22 @@ internal class NullabilityInfoContext
         EnsureIsSupported();
 
         var nullability = new NullabilityInfo(fieldInfo.FieldType);
+        var stateParser = NullabilityStateParser.Create(this, fieldInfo);
         var metaField = (FieldInfo)GetMemberMetadataDefinition(fieldInfo);
-        var stateParser = CreateStateParser(metaField);
         PopulateNullabilityInfo(nullability, stateParser, metaField.FieldType, fieldInfo.ReflectedType);
 
         return nullability;
     }
 
-    private static void PopulateNullabilityInfo(
+    private void PopulateNullabilityInfo(
         NullabilityInfo nullability, 
         NullabilityStateParser stateParser,
         Type metaType,
         Type? reflectedContainerType)
     {
         stateParser.Parse(nullability.Type, metaType, out var readState, out var writeState);
-
-        if (metaType.IsGenericParameter && !metaType.IsValueType)
-        {
-            throw new NotImplementedException();
-        }
-        else
-        {
-            nullability.ReadState = readState;
-            nullability.WriteState = writeState;
-        }
+        nullability.ReadState = readState;
+        nullability.WriteState = writeState;
 
         if (nullability.ElementType != null)
         {
@@ -259,10 +252,10 @@ internal class NullabilityInfoContext
 
     private bool IsImpactedByPublicOnlyAnnotations(bool isPrivate, bool isFamilyAndAssembly, bool isAssembly, Module module)
     {
-        if (!_publicOnlyModules.TryGetValue(module, out NotAnnotatedStatus value))
+        if (!_publicOnlyModulesCache.TryGetValue(module, out NotAnnotatedStatus value))
         {
             value = PopulateAnnotationInfo(module.GetCustomAttributesData());
-            _publicOnlyModules.Add(module, value);
+            _publicOnlyModulesCache.Add(module, value);
         }
 
         if (value == NotAnnotatedStatus.None)
@@ -322,99 +315,17 @@ internal class NullabilityInfoContext
             _ => NullabilityState.Unknown
         };
 
-    private NullabilityStateParser CreateStateParser(MemberInfo member, ParameterInfo? parameter = null)
-    {
-        Debug.Assert(member is not Type);
-
-        object? nullableAttributeArgument = null;
-        NullabilityState codeAnalysisReadState = NullabilityState.Unknown,
-            codeAnalysisWriteState = NullabilityState.Unknown;
-
-        IEnumerable<CustomAttributeData> attributes;
-        if (parameter != null)
-        {
-            attributes = parameter.GetCustomAttributesData();
-        }
-        else
-        {
-            attributes = member.GetCustomAttributesData();
-            // For properties, attributes like AllowNull are found on the return/value parameters of the getters/setters
-            // instead of on the property itself.
-            if (member is PropertyInfo property)
-            {
-                if (property.CanRead)
-                {
-                    attributes = attributes.Concat(property.GetMethod!.ReturnParameter.GetCustomAttributesData());
-                }
-                if (property.CanWrite)
-                {
-                    var valueParameter = property.SetMethod!.GetParameters()[^1];
-                    attributes = attributes.Concat(valueParameter.GetCustomAttributesData());
-                }
-            }
-        }
-        foreach (var attribute in attributes)
-        {
-            if (nullableAttributeArgument is null &&
-                attribute.AttributeType.Name == "NullableAttribute" &&
-                attribute.AttributeType.Namespace == CompilerServicesNameSpace &&
-                attribute.ConstructorArguments.Count == 1)
-            {
-                nullableAttributeArgument = attribute.ConstructorArguments[0].Value;
-            }
-            else if (attribute.AttributeType.Namespace == "System.Diagnostics.CodeAnalysis")
-            {
-                switch (attribute.AttributeType.Name)
-                {
-                    case "NotNullAttribute":
-                        codeAnalysisReadState = NullabilityState.NotNull;
-                        break;
-                    case "MaybeNullAttribute":
-                    case "MaybeNullWhenAttribute":
-                        // note: if both MaybeNull and NotNull are present, NotNull wins
-                        if (codeAnalysisReadState == NullabilityState.Unknown)
-                        {
-                            codeAnalysisReadState = NullabilityState.Nullable;
-                        }
-                        break;
-                    case "DisallowNullAttribute":
-                        codeAnalysisWriteState = NullabilityState.NotNull;
-                        break;
-                    case "AllowNullAttribute":
-                        if (codeAnalysisWriteState == NullabilityState.Unknown)
-                        {
-                            codeAnalysisWriteState = NullabilityState.Nullable;
-                        }
-                        break;
-                }
-            }
-
-            Debug.Assert(
-                attribute.AttributeType.Name != "NullableContextAttribute" ||
-                attribute.AttributeType.Namespace != CompilerServicesNameSpace);
-        }
-
-        var isImpactedByPublicOnly = IsMemberImpactedByPublicOnlyAnnotations(member);
-        Debug.Assert(!isImpactedByPublicOnly || nullableAttributeArgument == null);
-
-        return new(
-            nullableAttributeArgument,
-            codeAnalysisReadState,
-            codeAnalysisWriteState,
-            // If our annotations were stripped, we don't want to look up context
-            // since that won't be accurate.
-            // For a parameter we start looking for context on the member (method). Otherwise,
-            // member can't have context (which is only on types and methods), so look in the container
-            isImpactedByPublicOnly ? null : parameter != null ? member : member.DeclaringType,
-            _context
-        );
-    }
+    internal static bool IsNullableValueType(Type type) =>
+        type.IsGenericType
+        && type.IsValueType
+        && (type.IsGenericTypeDefinition ? type : type.GetGenericTypeDefinition()) == typeof(Nullable<>);
 
     private class NullabilityStateParser
     {
         private readonly object? _nullableAttributeArgument;
         private readonly MemberInfo? _contextLookupMember;
-        private readonly Dictionary<MemberInfo, NullabilityState> _contextCache;
+        private readonly NullabilityInfoContext _context;
+        private readonly Type? _reflectedType;
 
         private NullabilityState _codeAnalysisAttributeReadState,
             _codeAnalysisAttributeWriteState;
@@ -425,13 +336,118 @@ internal class NullabilityInfoContext
             NullabilityState codeAnalysisAttributeReadState,
             NullabilityState codeAnalysisAttributeWriteState,
             MemberInfo? contextLookupMember,
-            Dictionary<MemberInfo, NullabilityState> contextCache)
+            NullabilityInfoContext context,
+            Type? reflectedType)
         {
             _nullableAttributeArgument = nullableAttributeArgument;
             _codeAnalysisAttributeReadState = codeAnalysisAttributeReadState;
             _codeAnalysisAttributeWriteState = codeAnalysisAttributeWriteState;
             _contextLookupMember = contextLookupMember;
-            _contextCache = contextCache;
+            _context = context;
+            _reflectedType = reflectedType;
+        }
+
+        public static NullabilityStateParser Create(
+            NullabilityInfoContext context, 
+            MemberInfo member,
+            ParameterInfo? parameter = null,
+            Type? reflectedType = null)
+        {
+            object? nullableAttributeArgument = null;
+            NullabilityState codeAnalysisReadState = NullabilityState.Unknown,
+                codeAnalysisWriteState = NullabilityState.Unknown;
+
+            IEnumerable<CustomAttributeData> attributes;
+            if (parameter != null)
+            {
+                attributes = parameter.GetCustomAttributesData();
+            }
+            else
+            {
+                attributes = member.GetCustomAttributesData();
+                // For properties, attributes like AllowNull are found on the return/value parameters of the getters/setters
+                // instead of on the property itself.
+                if (member is PropertyInfo property)
+                {
+                    if (property.CanRead)
+                    {
+                        attributes = attributes.Concat(property.GetMethod!.ReturnParameter.GetCustomAttributesData());
+                    }
+                    if (property.CanWrite)
+                    {
+                        var valueParameter = property.SetMethod!.GetParameters()[^1];
+                        attributes = attributes.Concat(valueParameter.GetCustomAttributesData());
+                    }
+                }
+            }
+            foreach (var attribute in attributes)
+            {
+                if (nullableAttributeArgument is null &&
+                    TryGetNullableAttributeArgument(attribute, out nullableAttributeArgument))
+                {
+                    // nothing more to do
+                }
+                else if (attribute.AttributeType.Namespace == "System.Diagnostics.CodeAnalysis")
+                {
+                    switch (attribute.AttributeType.Name)
+                    {
+                        case "NotNullAttribute":
+                            codeAnalysisReadState = NullabilityState.NotNull;
+                            break;
+                        case "MaybeNullAttribute":
+                        case "MaybeNullWhenAttribute":
+                            // note: if both MaybeNull and NotNull are present, NotNull wins
+                            if (codeAnalysisReadState == NullabilityState.Unknown)
+                            {
+                                codeAnalysisReadState = NullabilityState.Nullable;
+                            }
+                            break;
+                        case "DisallowNullAttribute":
+                            codeAnalysisWriteState = NullabilityState.NotNull;
+                            break;
+                        case "AllowNullAttribute":
+                            if (codeAnalysisWriteState == NullabilityState.Unknown)
+                            {
+                                codeAnalysisWriteState = NullabilityState.Nullable;
+                            }
+                            break;
+                    }
+                }
+
+                Debug.Assert(
+                    attribute.AttributeType.Name != "NullableContextAttribute" ||
+                    attribute.AttributeType.Namespace != CompilerServicesNameSpace);
+            }
+
+            // Context can appear on containing methods or containing types. For types whose
+            // nullable annotations are stripped, we don't want to look up context at all.
+            var contextLookupType = context.IsMemberImpactedByPublicOnlyAnnotations(member) ? null
+                : parameter != null ? member
+                : member is Type type ? (type.IsGenericMethodParameter ? type.DeclaringMethod : type)
+                : member.DeclaringType;
+
+            return new(
+                nullableAttributeArgument,
+                codeAnalysisReadState,
+                codeAnalysisWriteState,
+                contextLookupType,
+                context,
+                member.ReflectedType
+            );
+        }
+
+        private static bool TryGetNullableAttributeArgument(CustomAttributeData attribute, out object? argument)
+        {
+            if (attribute.AttributeType.Name == "NullableAttribute" &&
+                attribute.AttributeType.Namespace == CompilerServicesNameSpace &&
+                attribute.ConstructorArguments.Count == 1)
+            {
+                argument = attribute.ConstructorArguments[0].Value;
+                return true;
+            }
+
+            argument = null;
+            return false;
         }
 
         public void Parse(Type type, Type metaType, out NullabilityState readState, out NullabilityState writeState)
@@ -456,15 +472,7 @@ internal class NullabilityInfoContext
                 }
                 else
                 {
-                    var nullableAttributeState = _nullableAttributeArgument switch
-                    {
-                        byte b => TranslateByte(b),
-                        ReadOnlyCollection<CustomAttributeTypedArgument> args
-                            when index < args.Count && args[index].Value is byte elementB => TranslateByte(elementB),
-                        _ => GetNullabilityContext(),
-                    };
-
-                    readState = writeState = nullableAttributeState;
+                    readState = writeState = TranslateNullableAttributeArgument(_nullableAttributeArgument, index, _contextLookupMember);
                     respectCodeAnalysisAnnotations = true;
                 }
             }
@@ -485,21 +493,40 @@ internal class NullabilityInfoContext
                 _codeAnalysisAttributeReadState = _codeAnalysisAttributeWriteState = NullabilityState.Unknown;
             }
 
-            if (metaType.IsGenericParameter
-                && !type.IsValueType
-                && !metaType.GenericParameterAttributes.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint))
+            if (metaType.IsGenericParameter && !type.IsValueType)
             {
-                readState = InterpretNullabilityForUnconstrainedGenericParameter(readState);
-                writeState = InterpretNullabilityForUnconstrainedGenericParameter(writeState);
+                var parameterNullability = GetGenericParameterNullability(metaType, reflectedType: _reflectedType);
+                readState = Constrain(readState, parameterNullability);
+                writeState = Constrain(writeState, parameterNullability);
 
-                static NullabilityState InterpretNullabilityForUnconstrainedGenericParameter(NullabilityState state) => state switch
+                // If we're returning the type of a generic parameter, we have to use a "softer" interpretation of
+                // its nullability unless it has the non-null "class" constraint.
+                if (type.IsGenericMethodParameter 
+                    && !(parameterNullability == NullabilityState.NotNull 
+                        && type.GenericParameterAttributes.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint)))
                 {
-                    NullabilityState.Nullable => NullabilityState.NullableIfGenericArgumentIsNonNullableReferenceType,
-                    NullabilityState.NotNull => NullabilityState.NotNullIfGenericArgumentIsNonNullableReferenceType,
-                    _ => state
-                };
+                    readState = InterpretNullabilityForUnconstrainedGenericParameter(readState);
+                    writeState = InterpretNullabilityForUnconstrainedGenericParameter(writeState);
+
+                    static NullabilityState InterpretNullabilityForUnconstrainedGenericParameter(NullabilityState state) => state switch
+                    {
+                        NullabilityState.Nullable => NullabilityState.NullableIfGenericArgumentIsNonNullableReferenceType,
+                        NullabilityState.NotNull => NullabilityState.NotNullIfGenericArgumentIsNonNullableReferenceType,
+                        _ => state
+                    };
+                }
             }
         }
+
+        private NullabilityState TranslateNullableAttributeArgument(object? argument, int index, MemberInfo? contextLookupMember) =>
+            argument switch
+            {
+                byte b => TranslateByte(b),
+                ReadOnlyCollection<CustomAttributeTypedArgument> args
+                    when index < args.Count && args[index].Value is byte elementB => TranslateByte(elementB),
+                _ when contextLookupMember is not null => GetNullabilityContext(contextLookupMember),
+                _ => NullabilityState.Unknown
+            };
 
         private static bool IsValueTypeWithoutAnnotation(Type type, out bool isNullableValueType)
         {
@@ -520,41 +547,154 @@ internal class NullabilityInfoContext
             return true;
         }
 
-        private static bool IsNullableValueType(Type type) =>
-            Nullable.GetUnderlyingType(type) is not null || type == typeof(Nullable<>);
-
-        private NullabilityState GetNullabilityContext()
+        private NullabilityState GetNullabilityContext(MemberInfo contextLookupMember)
         {
-            var contextLookupMember = _contextLookupMember;
-            if (contextLookupMember is not null)
+            if (_context._contextCache.TryGetValue(contextLookupMember, out var cached))
             {
-                if (_contextCache.TryGetValue(contextLookupMember, out var cached))
-                {
-                    return cached;
-                }
-
-                MemberInfo? member = contextLookupMember;
-                do
-                {
-                    foreach (var attribute in member!.GetCustomAttributesData())
-                    {
-                        if (attribute.AttributeType.Name == "NullableContextAttribute" &&
-                            attribute.AttributeType.Namespace == CompilerServicesNameSpace &&
-                            attribute.ConstructorArguments.Count == 1)
-                        {
-                            var contextState = TranslateByte(attribute.ConstructorArguments[0].Value);
-                            _contextCache.Add(contextLookupMember, contextState);
-                            return contextState;
-                        }
-                    }
-
-                    member = member.DeclaringType;
-                }
-                while (member != null);
+                return cached;
             }
+
+            MemberInfo? member = contextLookupMember;
+            do
+            {
+                foreach (var attribute in member!.GetCustomAttributesData())
+                {
+                    if (attribute.AttributeType.Name == "NullableContextAttribute" &&
+                        attribute.AttributeType.Namespace == CompilerServicesNameSpace &&
+                        attribute.ConstructorArguments.Count == 1)
+                    {
+                        var contextState = TranslateByte(attribute.ConstructorArguments[0].Value);
+                        _context._contextCache.Add(contextLookupMember, contextState);
+                        return contextState;
+                    }
+                }
+
+                member = member.DeclaringType;
+            }
+            while (member != null);
 
             return NullabilityState.Unknown;
         }
+
+        private NullabilityState GetGenericParameterNullability(Type genericParameter, Type? reflectedType)
+        {
+            Debug.Assert(genericParameter.IsGenericParameter && !genericParameter.IsValueType);
+
+            var state = GetBaselineGenericParameterNullability(genericParameter);
+
+            if (!genericParameter.IsGenericMethodParameter && reflectedType is not null)
+            {
+                ConstrainGenericParameterNullabilityWithInheritance(reflectedType, ref state, out _);
+            }
+
+            return state;
+
+            NullabilityState GetBaselineGenericParameterNullability(Type genericParameter)
+            {
+                Debug.Assert(genericParameter.IsGenericParameter && !genericParameter.IsValueType);
+
+                foreach (var attribute in genericParameter.GetCustomAttributesData())
+                {
+                    if (TryGetNullableAttributeArgument(attribute, out var argument))
+                    {
+                        return TranslateNullableAttributeArgument(argument, 0, genericParameter.DeclaringType);
+                    }
+                }
+
+                return NullabilityState.Unknown;
+            }
+
+            NullabilityState GetBaseTypeGenericArgumentNullability(Type type, int genericArgumentPosition)
+            {
+                Debug.Assert(type.BaseType is not null && type.BaseType.IsConstructedGenericType);
+
+                object? nullableAttributeArgument = null;
+                foreach (var attribute in type.BaseType!.GetCustomAttributesData())
+                {
+                    if (TryGetNullableAttributeArgument(attribute, out nullableAttributeArgument))
+                    {
+                        break;
+                    }
+                }
+
+                var nullabilityStateIndex = 1; // start at 1 since index 0 is the type itself
+                var baseTypeGenericArguments = type.BaseType!.GetGenericArguments();
+                for (var i = 0; i < genericArgumentPosition; i++)
+                {
+                    nullabilityStateIndex += CountNullabilityStates(baseTypeGenericArguments[i]);
+                }
+
+                return TranslateNullableAttributeArgument(nullableAttributeArgument, nullabilityStateIndex, type);
+
+                static int CountNullabilityStates(Type type) =>
+                    (IsValueTypeWithoutAnnotation(type, out _) ? 0 : 1)
+                        + (type.IsGenericType ? type.GetGenericArguments().Sum(CountNullabilityStates) : 0);
+            }
+
+            void ConstrainGenericParameterNullabilityWithInheritance(Type type, ref NullabilityState state, out Type? nextConstrainingGenericParameter)
+            {
+                var baseType = type.BaseType;
+                if (baseType is null)
+                {
+                    nextConstrainingGenericParameter = null;
+                }
+                else if (!baseType.IsGenericType)
+                {
+                    nextConstrainingGenericParameter = null;
+                    ConstrainGenericParameterNullabilityWithInheritance(baseType, ref state, out _);
+                }
+                else if (baseType.GetGenericTypeDefinition() == genericParameter.DeclaringType)
+                {
+                    var genericArgument = type.GetGenericArguments()[genericParameter.GenericParameterPosition];
+                    if (genericArgument.IsGenericParameter)
+                    {
+                        nextConstrainingGenericParameter = genericArgument;
+                        state = GetBaselineGenericParameterNullability(genericArgument);
+                    }
+                    else
+                    {
+                        nextConstrainingGenericParameter = null;
+                        state = GetBaseTypeGenericArgumentNullability(type, genericParameter.GenericParameterPosition);
+                    }
+                }
+                else
+                {
+                    ConstrainGenericParameterNullabilityWithInheritance(baseType, ref state, out var constrainingGenericParameter);
+                    if (constrainingGenericParameter is not null)
+                    {
+                        var genericArgument = type.GetGenericArguments()[genericParameter.GenericParameterPosition];
+                        if (genericArgument.IsGenericParameter)
+                        {
+                            nextConstrainingGenericParameter = genericArgument;
+                            state = GetBaselineGenericParameterNullability(genericArgument);
+                        }
+                        else
+                        {
+                            nextConstrainingGenericParameter = null;
+                            var constrainingState = GetBaseTypeGenericArgumentNullability(type, constrainingGenericParameter.GenericParameterPosition);
+                            state = Constrain(state, constrainingState);
+                        }
+                    }
+                    else
+                    {
+                        nextConstrainingGenericParameter = null;
+                    }
+                }
+            }
+        }
+
+        NullabilityState Constrain(NullabilityState @base, NullabilityState constraint) =>
+            @base switch
+            {
+                NullabilityState.NotNull => @base,
+                NullabilityState.Nullable => constraint == NullabilityState.NotNull ? constraint : @base,
+                NullabilityState.Unknown => constraint,
+                NullabilityState.NotNullIfGenericArgumentIsNonNullableReferenceType =>
+                    constraint == NullabilityState.NotNull || constraint == NullabilityState.Nullable ? constraint : @base,
+                NullabilityState.NullableIfGenericArgumentIsNonNullableReferenceType =>
+                    constraint != NullabilityState.Unknown ? constraint : @base,
+                _ => throw new ArgumentException(nameof(@base)),
+            };
     }
 }
 
