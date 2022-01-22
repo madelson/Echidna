@@ -7,8 +7,7 @@ namespace Medallion.Data.Mapping;
 
 internal static class MappingDelegateCreator
 {
-    // todo remove isExactReaderType
-    public static Delegate CreateMappingDelegate(Type readerType, RowSchema schema, Type destinationType, bool isExactReaderType)
+    public static Delegate CreateMappingDelegate(Type readerType, RowSchema schema, Type destinationType)
     {
         var dynamicMethod = new DynamicMethod(
             name: $"Map_{readerType}_To_{destinationType}_{unchecked((uint)schema.GetHashCode()):x}",
@@ -47,8 +46,7 @@ internal static class MappingDelegateCreator
         {
             var writer = new MappingILWriter(
                 dynamicMethod.GetILGenerator(),
-                readerType,
-                isExactReaderType: isExactReaderType
+                readerType
             );
 
             using var _ = rowMapperWriter.Bindings.Any(b => !b.Retrieval.IsSafe) ? writer.UseCurrentColumnIndexLocal() : default;

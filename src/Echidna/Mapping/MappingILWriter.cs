@@ -8,20 +8,11 @@ internal class MappingILWriter : ILWriter
 {
     private readonly Type _readerType;
 
-    /// <summary>
-    /// True if <see cref="_readerType"/> will be the result of calling <see cref="this.GetType()"/> on the <see cref="DbDataReader"/> at runtime.
-    /// </summary>
-    private readonly bool _isExactReaderType;
-
-    public MappingILWriter(
-        ILGenerator il, 
-        Type readerType,
-        bool isExactReaderType) : base(il)
+    public MappingILWriter(ILGenerator il, Type readerType) : base(il)
     {
-        Invariant.Require(!readerType.IsAbstract || !isExactReaderType);
+        Invariant.Require(!readerType.IsAbstract);
 
         this._readerType = readerType;
-        this._isExactReaderType = isExactReaderType;
     }
 
     public LocalBuilder? CurrentColumnVariable { get; private set; }
@@ -39,7 +30,6 @@ internal class MappingILWriter : ILWriter
         // TODO INullable types?
         
         var readerMethods = MappingMethods.ForReaderType(this._readerType);
-        var callReaderMethodOpCode = this._isExactReaderType ? Call : Callvirt;
         var isDestinationNullable = !retrieval.IsDestinationNonNullableReferenceType
             && retrieval.DestinationType.CanBeNull();
 
@@ -59,7 +49,7 @@ internal class MappingILWriter : ILWriter
         if (retrieval.RetrieveAsType == typeof(object))
         {
             EmitPushColumnIndex(); // stack is [reader, index]
-            this.IL.Emit(callReaderMethodOpCode, readerMethods.GetValueMethod); // stack is [value]
+            this.IL.Emit(Call, readerMethods.GetValueMethod); // stack is [value]
             this.IL.Emit(Dup); // stack is [value, value]
             this.IL.Emit(Ldsfld, MappingMethods.DBNullValueField); // stack is [value, value, DBNull.Value]
             this.IL.Emit(Bne_Un, isNotNullLabel); // stack is [value]
@@ -93,7 +83,7 @@ internal class MappingILWriter : ILWriter
             {
                 this.IL.Emit(Dup); // stack is [reader, reader]
                 EmitPushColumnIndex(); // stack is [reader, reader, index]
-                this.IL.Emit(callReaderMethodOpCode, readerMethods.IsDBNullMethod); // stack is [reader, isNull]
+                this.IL.Emit(Call, readerMethods.IsDBNullMethod); // stack is [reader, isNull]
                 this.IL.Emit(Brfalse, isNotNullLabel); // stack is [reader]
 
                 // null case
@@ -108,7 +98,7 @@ internal class MappingILWriter : ILWriter
             var getMethod = readerMethods.TypedGetMethods.TryGetValue(retrieval.RetrieveAsType, out var typedGetMethod)
                 ? typedGetMethod
                 : readerMethods.GetFieldValueGenericMethodDefinition.MakeGenericMethod(retrieval.RetrieveAsType);
-            this.IL.Emit(callReaderMethodOpCode, getMethod); // stack is [value]
+            this.IL.Emit(Call, getMethod); // stack is [value]
         }
 
         retrieval.Conversion?.WriteConversion(this); // stack is [value]

@@ -20,7 +20,7 @@ internal static class MappingDelegateProvider
 
         var factory = (MappingDelegateFactory<TDestination>)Cache.GetOrAdd((readerType, schema, destinationType), static key =>
         {
-            var createdDelegate = MappingDelegateCreator.CreateMappingDelegate(key.ReaderType, key.Schema, key.DestinationType, isExactReaderType: true);
+            var createdDelegate = MappingDelegateCreator.CreateMappingDelegate(key.ReaderType, key.Schema, key.DestinationType);
 
             return Activator.CreateInstance(typeof(MappingDelegateFactory<,>).MakeGenericType(key.ReaderType, key.DestinationType), createdDelegate)!;
         });
