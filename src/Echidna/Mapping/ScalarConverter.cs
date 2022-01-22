@@ -27,17 +27,11 @@ internal class ScalarConverter : IEquatable<ScalarConverter>
     {
         Invariant.Require(from != to, "should not be called for trivial conversions");
 
-        var cacheKey = new CacheKey(from, to);
-        if (Cache.TryGetValue(cacheKey, out var cached))
-        {
-            conversion = cached;
-        }
-        else
-        {
-            var newConversion = this.GetConversionOrDefault(from, to);
-            conversion = Cache.TryAdd(cacheKey, newConversion, out cached) ? newConversion : cached;
-        }
-
+        conversion = Cache.GetOrAdd(
+            new(from, to),
+            static (key, converter) => converter.GetConversionOrDefault(key.From, key.To),
+            this
+        );
         return conversion != null;
     }
 

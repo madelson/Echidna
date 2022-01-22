@@ -18,23 +18,12 @@ internal static class MappingDelegateProvider
         var schema = RowSchema.FromReader(reader);
         var destinationType = typeof(TDestination);
 
-        MappingDelegateFactory<TDestination> factory;
-
-        if (Cache.TryGetValue((readerType, schema, destinationType), out var cached))
+        var factory = (MappingDelegateFactory<TDestination>)Cache.GetOrAdd((readerType, schema, destinationType), static key =>
         {
-            factory = (MappingDelegateFactory<TDestination>)cached;
-        }
-        else
-        {
-            var createdDelegate = MappingDelegateCreator.CreateMappingDelegate(readerType, schema, destinationType, isExactReaderType: true);
+            var createdDelegate = MappingDelegateCreator.CreateMappingDelegate(key.ReaderType, key.Schema, key.DestinationType, isExactReaderType: true);
 
-            factory = (MappingDelegateFactory<TDestination>)Activator.CreateInstance(typeof(MappingDelegateFactory<,>).MakeGenericType(readerType, destinationType), createdDelegate)!;
-
-            if (!Cache.TryAdd((readerType, schema, destinationType), factory, out cached))
-            {
-                factory = (MappingDelegateFactory<TDestination>)cached;
-            }
-        }
+            return Activator.CreateInstance(typeof(MappingDelegateFactory<,>).MakeGenericType(key.ReaderType, key.DestinationType), createdDelegate)!;
+        });
 
         return factory.CreateDelegate(reader);
     }

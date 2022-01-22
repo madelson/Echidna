@@ -7,7 +7,7 @@ namespace Medallion.Data;
 internal static class Invariant
 {
     [Conditional("DEBUG")]
-    public static void Require(bool condition, [CallerArgumentExpression("condition")] string message = "")
+    public static void Require([DoesNotReturnIf(false)] bool condition, [CallerArgumentExpression("condition")] string message = "")
     {
         if (!condition)
         {
