@@ -14,6 +14,8 @@ Mapping delegate should have a target, even if null because that's faster. For a
 
 Forbid Read<object> since object is ambiguous (could be Expando to support dynamic or any scalar) OR have Row type
 
+Leverage C#7 nullabilityinfocontext as that evolves.
+
 Consider avoiding assigning null to properties/fields where we don't need to (see https://github.com/DapperLib/Dapper/blob/main/Dapper/SqlMapper.Settings.cs)
 
 Row type
