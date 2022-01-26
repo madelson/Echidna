@@ -25,6 +25,20 @@ internal class MicroCacheTest
     }
 
     [Test]
+    public void TestReturnsSameValueForConcurrentWrites()
+    {
+        var cache = new MicroCache<int, int>(maxCount: 5000);
+
+        using var barrier = new Barrier(participantCount: 2);
+        var writeTask1 = Task.Run(() => cache.GetOrAdd(1, i => { barrier.SignalAndWait(); return 1; }));
+        var writeTask2 = Task.Run(() => cache.GetOrAdd(1, i => { barrier.SignalAndWait(); return 2; }));
+        Assert.IsTrue(Task.WaitAll(new[] { writeTask1, writeTask2 }, TimeSpan.FromSeconds(5)));
+
+        Assert.That(writeTask1.Result, Is.EqualTo(1).Or.EqualTo(2));
+        Assert.AreEqual(writeTask1.Result, writeTask2.Result);
+    }
+
+    [Test]
     public void TestEvictsLeastUsed()
     {
         var cache = new MicroCache<int, string>(maxCount: 8);

@@ -78,7 +78,6 @@ internal sealed class MicroCache<TKey, TValue> where TKey : notnull
     {
         var items = this._items;
         var entry = new Entry(value);
-        TValue result;
         lock (this.Lock)
         {
             var spaceRemaining = this._spaceRemaining;
@@ -89,11 +88,7 @@ internal sealed class MicroCache<TKey, TValue> where TKey : notnull
                 {
                     SetEntryUsageStampAndUpdateCurrentAgeIfNeeded();
                     this._spaceRemaining = spaceRemaining - 1;
-                    result = value;
-                }
-                else
-                {
-                    result = items[key].Value;
+                    return value;
                 }
             }
             else
@@ -104,13 +99,12 @@ internal sealed class MicroCache<TKey, TValue> where TKey : notnull
                 {
                     var currentAge = SetEntryUsageStampAndUpdateCurrentAgeIfNeeded();
                     evictionHelper.Evict(items, currentAge, key, entry);
-                    result = value;
-                }
-                else
-                {
-                    result = items[key].Value;
+                    return value;
                 }
             }
+
+            // look up inside the lock so that the entry can't get evicted first
+            return items[key].Value;
 
             uint SetEntryUsageStampAndUpdateCurrentAgeIfNeeded()
             {
@@ -127,8 +121,6 @@ internal sealed class MicroCache<TKey, TValue> where TKey : notnull
                 return currentAge;
             }
         }
-
-        return value;
     }
 
     internal static void Touch(ref ulong usageStamp, uint currentAge)

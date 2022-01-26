@@ -80,6 +80,7 @@ internal sealed class DictionaryTypeMappingStrategy : CompositeTypeMappingStrate
                 }
             }
 
+            // TODO
             // This approach doesn't work, currently. See https://github.com/dotnet/runtime/issues/63555 
             //// If dictionary type doesn't implement IDictionary<string, TValue> using its own generics,
             //// we should be able to grab nullability from the add method's parameters

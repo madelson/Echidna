@@ -48,6 +48,8 @@ Source generation:
 
 General:
 
+* Leverage MSFT's API tracking lib
+
 * Support direct sproc execution probably a separate method that just uses CommandBehavior.Sproc and takes in the parameters
 
 * Consider SingleRow optimization for ReadFirst (see https://github.com/DapperLib/Dapper/blob/main/Dapper/SqlMapper.Settings.cs)
