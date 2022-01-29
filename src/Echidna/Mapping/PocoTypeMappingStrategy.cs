@@ -39,6 +39,8 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
         [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
         [NotNullWhen(returnValue: false)] out string? errorMessage)
     {
+        // TODO handle value type with no constructor
+
         if (type.IsAbstract)
         {
             return Error("An abstract type cannot be mapped to a POCO", out strategy, out errorMessage);
@@ -53,6 +55,7 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
             return Error("To be mapped to a POCO a type must have at least one public constructor with no unnamed or by-ref parameters", out strategy, out errorMessage);
         }
 
+        // TODO support fields
         var writableProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => (p.SetMethod?.IsPublic ?? false) && !p.GetIndexParameters().Any());
 

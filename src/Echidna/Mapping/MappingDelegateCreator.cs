@@ -22,32 +22,31 @@ internal static class MappingDelegateCreator
             InitLocals = false // not needed; should help perf slightly
         };
 
-        RowMapperWriter? rowMapperWriter;
-        var dictionaryMapper = new DictionaryMapper(); // TODO
-        if (dictionaryMapper.TryBind(schema, destinationType, out var bindings))
+        var strategy = CompositeTypeMappingStrategy.TryCreateFor(destinationType, out var compositeStrategy, out var errorMessage)
+            ? compositeStrategy
+            : throw new NotImplementedException(); // todo use scalar for single column
+
+        MappingResult mappingResult;
+        switch (strategy)
         {
-            if (!dictionaryMapper.TryCreateMapperWriter(bindings, out rowMapperWriter))
-            {
-                throw Invariant.ShouldNeverGetHere();
-            }
-        }
-        else
-        {
-            // todo clean this up
-            throw new InvalidOperationException($"Could not generate mapping for type {destinationType}");
+            case DictionaryTypeMappingStrategy dictionaryStrategy:
+                mappingResult = new DictionaryMapper().Map(dictionaryStrategy, schema, prefix: string.Empty, Range.All);
+                break;
+            default:
+                throw new NotImplementedException(); // todo
         }
 
         var writer = new MappingILWriter(
             dynamicMethod.GetILGenerator(),
             readerType
         );
-        rowMapperWriter.EmitMappingLogic(writer); // stack is [result]
+        mappingResult.Emit(writer); // stack is [result]
         writer.IL.Emit(Ret);
 
         var delegateType = typeof(MappingDelegate<,>).MakeGenericType(readerType, destinationType);
         // note: using a target makes delegates faster!
         // TODO later we might bind to the RowSchema or similar to power a Row type
-        return new(dynamicMethod.CreateDelegate(delegateType, target: null), new MappingDelegateErrorHandler(bindings, destinationType));
+        return new(dynamicMethod.CreateDelegate(delegateType, target: null), new MappingDelegateErrorHandler(mappingResult.Bindings, destinationType));
     }
 }
 

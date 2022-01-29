@@ -12,7 +12,7 @@ internal abstract class CompositeTypeMappingStrategy
 {
     // TODO caching
 
-    protected static bool TryCreateFor(
+    public static bool TryCreateFor(
         Type type,
         [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
         [NotNullWhen(returnValue: false)] out string? errorMessage)

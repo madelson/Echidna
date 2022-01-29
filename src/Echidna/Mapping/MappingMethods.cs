@@ -21,11 +21,16 @@ internal static class MappingMethods
 
     public static readonly ConstructorInfo LossyConversionExceptionConstructor,
         ArgumentOutOfRangeExceptionConstructor,
-        SqlNullValueExceptionDefaultConstructor;
+        SqlNullValueExceptionDefaultConstructor,
+        DecimalFromInt32Constructor,
+        DecimalFromInt64Constructor,
+        DecimalFromUInt64Constructor,
+        DecimalFromPartsConstructor;
 
     public static readonly PropertyInfo StringComparerOrdinalIgnoreCaseProperty;
 
-    public static readonly FieldInfo DBNullValueField;
+    public static readonly FieldInfo DBNullValueField,
+        DecimalZeroField;
 
     static MappingMethods()
     {
@@ -45,9 +50,16 @@ internal static class MappingMethods
         ArgumentOutOfRangeExceptionConstructor = typeof(ArgumentOutOfRangeException).GetConstructor(Type.EmptyTypes)!;
         SqlNullValueExceptionDefaultConstructor = typeof(SqlNullValueException).GetConstructor(Type.EmptyTypes)!;
 
+        DecimalFromInt32Constructor = typeof(decimal).GetConstructor(new[] { typeof(int) })!;
+        DecimalFromInt64Constructor = typeof(decimal).GetConstructor(new[] { typeof(long) })!;
+        DecimalFromUInt64Constructor = typeof(decimal).GetConstructor(new[] { typeof(ulong) })!;
+        DecimalFromPartsConstructor = typeof(decimal).GetConstructor(new[] { typeof(int), typeof(int), typeof(int), typeof(bool), typeof(byte) })!;
+
         StringComparerOrdinalIgnoreCaseProperty = typeof(StringComparer).GetProperty(nameof(StringComparer.OrdinalIgnoreCase), BindingFlags.Public | BindingFlags.Static)!;
 
         DBNullValueField = typeof(DBNull).GetField(nameof(DBNull.Value), BindingFlags.Public | BindingFlags.Static)!;
+
+        DecimalZeroField = typeof(decimal).GetField(nameof(decimal.Zero), BindingFlags.Public | BindingFlags.Static)!;
     }
 
     public static DbDataReaderMethods ForReaderType(Type readerType) =>

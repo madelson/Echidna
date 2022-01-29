@@ -98,4 +98,19 @@ internal class DictionaryMappingTest
         Assert.IsTrue(dict.ContainsKey("apPLE"));
         Assert.AreEqual(1, dict.Count);
     }
+
+    [Test]
+    public void TestMapToSortedDictionary()
+    {
+        using var reader = Db.MySql.Read("SELECT 1 AS C, 2 AS A, 3 AS b");
+        Assert.IsTrue(reader.Value.Read());
+
+        var dict = MappingDelegateProvider.GetMappingDelegate<SortedDictionary<string, int>>(reader.Value)();
+        CollectionAssert.AreEqual(
+            new KeyValuePair<string, int>[] { new("A", 2), new("b", 3), new("C", 1) },
+            dict
+        );
+    }
+
+    // TODO test map to dictionary deriving from non-nullable reference type (using .NET 7 NullabilityInfoContext)
 }

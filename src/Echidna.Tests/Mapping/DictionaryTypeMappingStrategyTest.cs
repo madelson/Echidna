@@ -94,7 +94,7 @@ internal class DictionaryTypeMappingStrategyTest
     public void TestAllowsDefaultedParameters()
     {
         var strategy = CheckStrategy(typeof(DefaultedParameterDictionary), expectCapacity: false, expectComparer: false);
-        Assert.AreEqual(DictionaryTypeMappingStrategy.ParameterKind.Defaulted, strategy!.ConstructorParameters.Values.Single());
+        Assert.AreEqual(DictionaryTypeMappingStrategy.ParameterKind.Defaulted, strategy!.ConstructorParameters.Single().Kind);
     }
 
     private class DefaultedParameterDictionary : Dictionary<string, byte>
@@ -153,8 +153,8 @@ internal class DictionaryTypeMappingStrategyTest
             Assert.IsNull(expectedErrorMessage);
             var dictionaryStrategy = (DictionaryTypeMappingStrategy)strategy;
             AssertIsValid(dictionaryStrategy);
-            Assert.AreEqual(expectCapacity, dictionaryStrategy.ConstructorParameters.Values.Contains(DictionaryTypeMappingStrategy.ParameterKind.Capacity));
-            Assert.AreEqual(expectComparer, dictionaryStrategy.ConstructorParameters.Values.Contains(DictionaryTypeMappingStrategy.ParameterKind.Comparer));
+            Assert.AreEqual(expectCapacity, dictionaryStrategy.ConstructorParameters.Any(t => t.Kind == DictionaryTypeMappingStrategy.ParameterKind.Capacity));
+            Assert.AreEqual(expectComparer, dictionaryStrategy.ConstructorParameters.Any(t => t.Kind == DictionaryTypeMappingStrategy.ParameterKind.Comparer));
             Assert.AreEqual(expectNonNullableReferenceType, dictionaryStrategy.IsValueTypeNonNullableReferenceType);
             return dictionaryStrategy;
         }
@@ -177,7 +177,7 @@ internal class DictionaryTypeMappingStrategyTest
 
         Assert.IsTrue(strategy.AddMethod.DeclaringType!.IsAssignableFrom(strategy.Constructor.DeclaringType));
 
-        CollectionAssert.AreEquivalent(strategy.Constructor.GetParameters(), strategy.ConstructorParameters.Keys);
+        CollectionAssert.AreEqual(strategy.Constructor.GetParameters(), strategy.ConstructorParameters.Select(c => c.Parameter));
 
         Assert.AreEqual(typeof(string), strategy.AddMethod.GetParameters()[0].ParameterType);
     }

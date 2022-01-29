@@ -1,11 +1,7 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+using System.Collections.Immutable;
 
 namespace Medallion.Data.Mapping;
 
@@ -17,16 +13,18 @@ internal sealed class DictionaryTypeMappingStrategy : CompositeTypeMappingStrate
 
     public ConstructorInfo Constructor { get; }
 
-    public IReadOnlyDictionary<ParameterInfo, ParameterKind> ConstructorParameters { get; }
+    public ImmutableArray<(ParameterInfo Parameter, ParameterKind Kind)> ConstructorParameters { get; }
 
     public MethodInfo AddMethod { get; }
+
+    public Type DictionaryType => this.Constructor.DeclaringType!;
 
     private DictionaryTypeMappingStrategy(
         Type implementedIDictionaryInterface,
         Type valueType,
         NullabilityInfo? nullabilityInfo,
         ConstructorInfo constructor,
-        IReadOnlyDictionary<ParameterInfo, ParameterKind> constructorParameters)
+        ImmutableArray<(ParameterInfo Parameter, ParameterKind Kind)> constructorParameters)
     {
         var addMethod = GetAddMethod();
         this.ValueType = valueType;
@@ -148,6 +146,12 @@ internal sealed class DictionaryTypeMappingStrategy : CompositeTypeMappingStrate
             return Error("An abstract type cannot be mapped to a dictionary", out strategy, out errorMessage);
         }
 
+        if (type.IsValueType)
+        {
+            // NOTE: we could support this with extra code in the mapper but given the limited utility it does not seem worthwhile
+            return Error("Mapping value types as dictionaries is not supported", out strategy, out errorMessage);
+        }
+
         var interfaceAndGenericArgumentsCandidates = type.GetInterfaces()
             .Where(i => i.IsConstructedGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>))
             .Select(i => (Interface: i, GenericArguments: i.GetGenericArguments()))
@@ -164,18 +168,18 @@ internal sealed class DictionaryTypeMappingStrategy : CompositeTypeMappingStrate
         var interfaceAndGenericArguments = interfaceAndGenericArgumentsCandidates[0];
 
         var constructor = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-            .Select(c => (Constructor: c, Parameters: c.GetParameters().ToDictionary(p => p, MapParameter)))
+            .Select(c => (Constructor: c, Parameters: c.GetParameters().Select(p => (Parameter: p, Kind: MapParameter(p))).ToImmutableArray()))
             .Where(
-                c => !c.Parameters.Values.Contains(ParameterKind.Invalid) // none invalid
-                    && c.Parameters.Values.Count(k => k == ParameterKind.Capacity) <= 1 // at most one capacity
-                    && c.Parameters.Values.Count(k => k == ParameterKind.Comparer) <= 1 // at most one comparer
+                c => !c.Parameters.Any(p => p.Kind == ParameterKind.Invalid) // none invalid
+                    && c.Parameters.Count(p => p.Kind == ParameterKind.Capacity) <= 1 // at most one capacity
+                    && c.Parameters.Count(p => p.Kind == ParameterKind.Comparer) <= 1 // at most one comparer
             )
             // prefer being able to specify a comparer
-            .OrderByDescending(c => c.Parameters.Values.Contains(ParameterKind.Comparer))
+            .OrderByDescending(c => c.Parameters.Any(p => p.Kind == ParameterKind.Comparer))
             // then prefer being able to specify capacity
-            .ThenByDescending(c => c.Parameters.Values.Contains(ParameterKind.Capacity))
+            .ThenByDescending(c => c.Parameters.Any(p => p.Kind == ParameterKind.Capacity))
             // then prefer the fewest parameters
-            .ThenBy(c => c.Parameters.Count)
+            .ThenBy(c => c.Parameters.Length)
             // then arbitrarily but consistently to break any ties
             .ThenBy(c => c.ToString())
             .FirstOrDefault();

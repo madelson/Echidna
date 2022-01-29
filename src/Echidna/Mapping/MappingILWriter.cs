@@ -57,7 +57,7 @@ internal class MappingILWriter : ILWriter
             if (isDestinationNullable)
             {
                 this.IL.Emit(Pop); // stack is []
-                EmitPushNullValueOfDestinationType(); // stack is [null]
+                this.EmitLoadConstant(retrieval.DestinationType, null); // stack is [null]
                 this.IL.Emit(Br, doneLabel);
             }
             else
@@ -87,7 +87,7 @@ internal class MappingILWriter : ILWriter
 
                 // null case
                 this.IL.Emit(Pop); // stack is []
-                EmitPushNullValueOfDestinationType(); // stack is [null]
+                this.EmitLoadConstant(retrieval.DestinationType, null); // stack is [null]
                 this.IL.Emit(Br, doneLabel);
             }
 
@@ -106,23 +106,6 @@ internal class MappingILWriter : ILWriter
         // helpers
 
         void EmitPushColumnIndex() => this.IL.Emit(Ldc_I4, retrieval.Column.Index);
-
-        void EmitPushNullValueOfDestinationType()
-        {
-            Invariant.Require(retrieval.DestinationType.CanBeNull());
-
-            if (retrieval.DestinationType.IsValueType) // Nullable<T>
-            {
-                using var nullableNull = this.UseLocal(retrieval.DestinationType);
-                this.IL.Emit(Ldloca, nullableNull); // stack is [&nullableNull]
-                this.IL.Emit(Initobj, retrieval.DestinationType); // stack is [reader]
-                this.IL.Emit(Ldloc, nullableNull); // stack is [default(Nullable<T>)]
-            }
-            else // reference type
-            {
-                this.IL.Emit(Ldnull); // stack is [null]
-            }
-        }
     }
 
     public void EmitPushReader() => this.IL.Emit(Ldarg, ReaderArgumentIndex);
