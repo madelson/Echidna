@@ -10,27 +10,31 @@ namespace Medallion.Data.Mapping;
 
 internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
 {
-    private readonly IReadOnlySet<ParameterOrProperty> _nonNullableReferenceTypeParametersOrProperties;
+    private readonly IReadOnlySet<BindableMember> _nonNullableReferenceTypeParametersOrProperties;
+
+    public Type PocoType { get; }
 
     public IReadOnlyCollection<ConstructorInfo> Constructors { get; }
 
-    public IReadOnlyDictionary<string, IReadOnlySet<ParameterOrProperty>> NameMapping { get; }
+    public IReadOnlyDictionary<string, IReadOnlySet<BindableMember>> NameMapping { get; }
 
     private PocoTypeMappingStrategy(
+        Type pocoType,
         NullabilityInfo? nullabilityInfo,
         IReadOnlyList<ConstructorInfo> constructors,
-        IReadOnlyDictionary<string, IReadOnlySet<ParameterOrProperty>> nameMapping)
+        IReadOnlyDictionary<string, IReadOnlySet<BindableMember>> nameMapping)
     {
+        this.PocoType = pocoType;
         this.Constructors = constructors;
         this.NameMapping = nameMapping;
         this._nonNullableReferenceTypeParametersOrProperties = GetNonNullableReferenceTypeParametersOrProperties(
-            constructors[0].DeclaringType!,
+            pocoType,
             nullabilityInfo,
             nameMapping.SelectMany(kvp => kvp.Value)
         );
     }
 
-    public bool IsNonNullableReferenceType(ParameterOrProperty parameterOrProperty) =>
+    public bool IsNonNullableReferenceType(BindableMember parameterOrProperty) =>
         this._nonNullableReferenceTypeParametersOrProperties.Contains(parameterOrProperty);
 
     public static bool TryCreatePocoStrategyFor(
@@ -39,8 +43,6 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
         [NotNullWhen(returnValue: true)] out CompositeTypeMappingStrategy? strategy,
         [NotNullWhen(returnValue: false)] out string? errorMessage)
     {
-        // TODO handle value type with no constructor
-
         if (type.IsAbstract)
         {
             return Error("An abstract type cannot be mapped to a POCO", out strategy, out errorMessage);
@@ -50,36 +52,39 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
             .Select(c => (Constructor: c, Parameters: c.GetParameters()))
             .Where(c => !c.Parameters.Any(p => p.Name == null || p.ParameterType.IsByRef))
             .ToArray();
-        if (constructors.Length == 0)
+        if (constructors.Length == 0 && !type.IsValueType)
         {
-            return Error("To be mapped to a POCO a type must have at least one public constructor with no unnamed or by-ref parameters", out strategy, out errorMessage);
+            return Error("To be mapped to a POCO, a reference type must have at least one public constructor with no unnamed or by-ref parameters", out strategy, out errorMessage);
         }
 
         // TODO support fields
         var writableProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => (p.SetMethod?.IsPublic ?? false) && !p.GetIndexParameters().Any());
+        var writableFields = type.GetFields(BindingFlags.Public | BindingFlags.Instance)
+            .Where(f => !f.IsInitOnly);
 
         var nameMapping = constructors.SelectMany(c => c.Parameters)
-            .Select(p => (Name: p.Name!, Value: new ParameterOrProperty(p)))
-            .Concat(writableProperties.Select(p => (p.Name, Value: new ParameterOrProperty(p))))
+            .Select(p => (Name: p.Name!, Value: new BindableMember(p)))
+            .Concat(writableProperties.Select(p => (p.Name, Value: new BindableMember(p))))
+            .Concat(writableFields.Select(f => (f.Name, Value: new BindableMember(f))))
             .GroupBy(t => t.Name, t => t.Value, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.ToHashSet().As<IReadOnlySet<ParameterOrProperty>>(), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(g => g.Key, g => g.ToHashSet().As<IReadOnlySet<BindableMember>>(), StringComparer.OrdinalIgnoreCase);
         if (nameMapping.Count == 0)
         {
-            return Error("To be mapped to a POCO a type must have at least one public constructor with parameters or at least one writable property", out strategy, out errorMessage);
+            return Error("To be mapped to a POCO a type must have at least one public constructor with parameters or at least one public writable property or field", out strategy, out errorMessage);
         }
 
-        return Success(new PocoTypeMappingStrategy(nullabilityInfo, constructors.Select(c => c.Constructor).ToArray(), nameMapping), out strategy, out errorMessage);
+        return Success(new PocoTypeMappingStrategy(type, nullabilityInfo, constructors.Select(c => c.Constructor).ToArray(), nameMapping), out strategy, out errorMessage);
     }
 
-    private static IReadOnlySet<ParameterOrProperty> GetNonNullableReferenceTypeParametersOrProperties(
+    private static IReadOnlySet<BindableMember> GetNonNullableReferenceTypeParametersOrProperties(
         Type type,
         NullabilityInfo? nullabilityInfo,
-        IEnumerable<ParameterOrProperty> parametersOrProperties)
+        IEnumerable<BindableMember> parametersOrProperties)
     {
         // TODO this will have to be revisited wrt generic types; see https://github.com/dotnet/runtime/issues/63555
 
-        var result = new HashSet<ParameterOrProperty>();
+        var result = new HashSet<BindableMember>();
 
         var genericArguments = type.GetGenericArguments();
         Type? genericTypeDefinition = null;
@@ -126,26 +131,31 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
     }
 }
 
-internal readonly struct ParameterOrProperty : IEquatable<ParameterOrProperty>
+internal readonly struct BindableMember : IEquatable<BindableMember>
 {
     private readonly object _value;
 
-    public ParameterOrProperty(ParameterInfo parameter) { this._value = parameter; }
-    public ParameterOrProperty(PropertyInfo property) { this._value = property; }
+    public BindableMember(ParameterInfo parameter) { this._value = parameter; }
+    public BindableMember(PropertyInfo property) { this._value = property; }
+    public BindableMember(FieldInfo field) { this._value = field; }
 
     public ParameterInfo? Parameter => this._value as ParameterInfo;
     public PropertyInfo? Property => this._value as PropertyInfo;
+    public FieldInfo? Field => this._value as FieldInfo;
 
     public Type Type => 
-        this._value is ParameterInfo parameter ? parameter.ParameterType : ((PropertyInfo)this._value).PropertyType;
+        this._value is ParameterInfo parameter ? parameter.ParameterType 
+            : this._value is PropertyInfo property ? property.PropertyType
+            : ((FieldInfo)this._value).FieldType;
 
-    public static implicit operator ParameterOrProperty(ParameterInfo parameter) => new(parameter);
-    public static implicit operator ParameterOrProperty(PropertyInfo property) => new(property);
+    public static implicit operator BindableMember(ParameterInfo parameter) => new(parameter);
+    public static implicit operator BindableMember(PropertyInfo property) => new(property);
+    public static implicit operator BindableMember(FieldInfo field) => new(field);
 
-    public bool Equals(ParameterOrProperty other) => this._value == other._value;
+    public bool Equals(BindableMember other) => this._value == other._value;
 
     public override bool Equals([NotNullWhen(true)] object? obj) => 
-        obj is ParameterOrProperty that && this.Equals(that);
+        obj is BindableMember that && this.Equals(that);
 
     public override int GetHashCode() => this._value.GetHashCode();
 }

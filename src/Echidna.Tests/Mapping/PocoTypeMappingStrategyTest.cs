@@ -21,7 +21,7 @@ internal class PocoTypeMappingStrategyTest
 
     [Test]
     public void TestRequiresAtLeastOneBindableName() =>
-        CheckStrategy(typeof(NothingToBind), expectedErrorMessage: "at least one public constructor with parameters or at least one writable property");
+        CheckStrategy(typeof(NothingToBind), expectedErrorMessage: "at least one public constructor with parameters or at least one public writable property or field");
 
     private class NothingToBind 
     {
@@ -62,6 +62,21 @@ internal class PocoTypeMappingStrategyTest
         public int A { get; init; }
         public string B { set { } }
     }
+
+    [Test]
+    public void TestSupportsConstructorlessStructWithWritableProperties()
+    {
+        CheckStrategy(typeof(ConstructorlessStructNoProperties), expectedErrorMessage: "must have at least one public constructor");
+
+        var strategy = CheckStrategy(typeof(ConstructorlessStruct))!;
+        Assert.IsEmpty(strategy.Constructors);
+        Assert.AreEqual(1, strategy.NameMapping.Count);
+        Assert.AreEqual(1, strategy.NameMapping["A"].Count);
+    }
+
+    private struct ConstructorlessStructNoProperties { }
+
+    private struct ConstructorlessStruct { public int A; }
 
     // TODO revisit this after working through https://github.com/dotnet/runtime/issues/63555
     //[Test]
@@ -113,7 +128,7 @@ internal class PocoTypeMappingStrategyTest
 
     private static void AssertIsValid(PocoTypeMappingStrategy strategy)
     {
-        Assert.IsNotEmpty(strategy.Constructors);
+        if (!strategy.PocoType.IsValueType) { Assert.IsNotEmpty(strategy.Constructors); }
         Assert.IsNotEmpty(strategy.NameMapping);
         foreach (var set in strategy.NameMapping.Values)
         {
