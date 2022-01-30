@@ -33,12 +33,17 @@ internal sealed record ArrayElementBindingTarget(int Order, Type ElementType) : 
 
 internal sealed record PropertyBindingTarget(PropertyInfo Property) : ColumnBindingTarget
 {
-    protected override string InternalToString() => $"property {this.Property} of {this.Property.DeclaringType}";
+    protected override string InternalToString() => $"property {this.Property} of {this.Property.ReflectedType ?? this.Property.DeclaringType}";
+}
+
+internal sealed record FieldBindingTarget(FieldInfo Field) : ColumnBindingTarget
+{
+    protected override string InternalToString() => $"property {this.Field} of {this.Field.ReflectedType ?? this.Field.DeclaringType}";
 }
 
 internal sealed record ConstructorParameterBindingTarget(ParameterInfo Parameter) : ColumnBindingTarget
 {
-    protected override string InternalToString() => $"parameter {this.Parameter} of {this.Parameter.Member.DeclaringType}.{this.Parameter.Member.Name}";
+    protected override string InternalToString() => $"parameter {this.Parameter} of {this.Parameter.Member.ReflectedType ?? this.Parameter.Member.DeclaringType}.{this.Parameter.Member.Name}";
 }
 
 internal sealed record NestedBindingTarget(ColumnBindingTarget OuterTarget, ColumnBindingTarget Target) : ColumnBindingTarget 

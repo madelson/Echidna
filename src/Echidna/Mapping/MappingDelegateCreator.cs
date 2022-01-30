@@ -40,7 +40,7 @@ internal static class MappingDelegateCreator
             dynamicMethod.GetILGenerator(),
             readerType
         );
-        mappingResult.Emit(writer); // stack is [result]
+        mappingResult.Emit(writer, new ColumnLoader(writer, mappingResult.Bindings.Select(b => b.Retrieval))); // stack is [result]
         writer.IL.Emit(Ret);
 
         var delegateType = typeof(MappingDelegate<,>).MakeGenericType(readerType, destinationType);

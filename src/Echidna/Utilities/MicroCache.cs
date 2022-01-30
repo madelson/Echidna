@@ -62,14 +62,14 @@ internal sealed class MicroCache<TKey, TValue> where TKey : notnull
 
     public TValue GetOrAdd(TKey key, Func<TKey, TValue> valueFactory)
     {
-        Invariant.Require(valueFactory is not null);
+        Invariant.Require(valueFactory != null);
 
         return this.TryGetValue(key, out var existing) ? existing : this.AddOrGetValue(key, valueFactory(key));
     }
 
     public TValue GetOrAdd<TArg>(TKey key, Func<TKey, TArg, TValue> valueFactory, TArg factoryArgument)
     {
-        Invariant.Require(valueFactory is not null);
+        Invariant.Require(valueFactory != null);
 
         return this.TryGetValue(key, out var existing) ? existing : this.AddOrGetValue(key, valueFactory(key, factoryArgument));
     }

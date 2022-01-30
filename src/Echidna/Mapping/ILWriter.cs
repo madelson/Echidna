@@ -24,7 +24,7 @@ internal class ILWriter
 
         if (!type.IsValueType)
         {
-            if (value == null)
+            if (value is null)
             {
                 il.Emit(Ldnull);
                 return;
@@ -128,7 +128,7 @@ internal class ILWriter
             }
         }
 
-        throw new NotImplementedException();
+        throw new NotSupportedException($"Cannot emit {type} constant value '{value}'");
     }
 
     public LocalScope UseLocal(Type type)
@@ -148,7 +148,7 @@ internal class ILWriter
         return new LocalScope(this, local);
     }
 
-    public ref struct LocalScope
+    public sealed class LocalScope : IDisposable
     {
         private readonly LocalBuilder _local;
         private ILWriter _writer;

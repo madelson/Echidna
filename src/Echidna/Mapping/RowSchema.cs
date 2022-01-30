@@ -50,4 +50,19 @@ internal sealed class RowSchema : IEquatable<RowSchema>
         foreach (var name in this.ColumnNames.AsSpan()) { hashCode.Add(name); }
         return hashCode.ToHashCode();
     }
+
+    public List<(string Name, Column Column)> GetColumns(string prefix, Range range)
+    {
+        var result = new List<(string Name, Column Column)>();
+        var (offset, length) = range.GetOffsetAndLength(this.ColumnCount);
+        for (var i = 0; i < length; ++i)
+        {
+            var column = this[i + offset];
+            if (column.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add((column.Name.Substring(prefix.Length), column));
+            }
+        }
+        return result;
+    }
 }
