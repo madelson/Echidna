@@ -33,20 +33,15 @@ internal sealed class ColumnLoader
 
     public void EmitLoad(ColumnValueRetrieval column)
     {
-        var ordinal = this._columnsToOrdinals[column];
-        
-        if (ordinal < this._nextOrdinal)
+        // we've already stored it off, so just load the local
+        if (this._storedColumns.Remove(column, out var existingLocal))
         {
-            // we've already stored it off, so just load the local
-            if (this._storedColumns.Remove(column, out var local))
-            {
-                this._writer.IL.Emit(Ldloc, local);
-                local.Dispose();
-            }
-            else { throw Invariant.ShouldNeverGetHere("Stored column requested twice"); }
-
+            this._writer.IL.Emit(Ldloc, existingLocal);
+            existingLocal.Dispose();
             return;
         }
+
+        var ordinal = this._columnsToOrdinals[column];
 
         // load any columns BEFORE this one and store them in locals
         while (this._nextOrdinal < ordinal)
@@ -64,5 +59,5 @@ internal sealed class ColumnLoader
         ++this._nextOrdinal;
     }
 
-    // TODO MappingILWriter.Emit() belongs here?
+    // TODO MappingILWriter.Emit() belongs here and then maybe we can kill MappingILWriter?
 }

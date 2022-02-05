@@ -1,6 +1,7 @@
 ﻿using System.Data.Common;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 using static System.Reflection.Emit.OpCodes;
 
 namespace Medallion.Data.Mapping;
@@ -26,15 +27,26 @@ internal static class MappingDelegateCreator
             ? compositeStrategy
             : throw new NotImplementedException(); // todo use scalar for single column
 
-        MappingResult mappingResult;
+        MappingResult? mappingResult;
+        // todo we should get the mapper from the strategy rather than switching
         switch (strategy)
         {
             case DictionaryTypeMappingStrategy dictionaryStrategy:
                 mappingResult = new DictionaryMapper().Map(dictionaryStrategy, schema, prefix: string.Empty, Range.All);
                 break;
+            case PocoTypeMappingStrategy pocoStrategy:
+                mappingResult = new PocoMapper().TryMap(pocoStrategy, schema, prefix: string.Empty, Range.All);
+                break;
             default:
                 throw new NotImplementedException(); // todo
         }
+        if (mappingResult is null)
+        {
+            // todo if single column use scalar result
+            // todo get message out of the mapper ideally
+            throw new NotImplementedException();
+        }
+        ValidateMappingResult(mappingResult, schema, destinationType);
 
         var writer = new MappingILWriter(
             dynamicMethod.GetILGenerator(),
@@ -47,6 +59,32 @@ internal static class MappingDelegateCreator
         // note: using a target makes delegates faster!
         // TODO later we might bind to the RowSchema or similar to power a Row type
         return new(dynamicMethod.CreateDelegate(delegateType, target: null), new MappingDelegateErrorHandler(mappingResult.Bindings, destinationType));
+    }
+
+    private static void ValidateMappingResult(MappingResult result, RowSchema schema, Type destinationType)
+    {
+        if (result.IsPartialBinding)
+        {
+            var unboundColumns = Enumerable.Range(0, schema.ColumnCount)
+                .Except(result.Bindings.Select(b => b.Retrieval.Column.Index))
+                .ToArray();
+            if (unboundColumns.Length != 0)
+            {
+                var errorBuilder = new StringBuilder()
+                    .AppendLine($"Failed to map result set to {destinationType} because not all columns were bound and {destinationType} could only be partially populated.")
+                    .AppendLine($"The following columns were not bound: {string.Join(", ", unboundColumns.Select(i => schema[i]))}")
+                    .AppendLine("The following columns were bound:");
+                var bindingsByColumnIndex = result.Bindings.ToLookup(b => b.Retrieval.Column.Index);
+                foreach (var group in bindingsByColumnIndex)
+                {
+                    foreach (var binding in group)
+                    {
+                        errorBuilder.AppendLine($"\t{binding.Retrieval.Column} -> {binding.Target}");
+                    }
+                }
+                throw new MappingException(errorBuilder.ToString());
+            }
+        }
     }
 }
 

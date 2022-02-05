@@ -76,7 +76,9 @@ internal class PocoTypeMappingStrategyTest
 
     private struct ConstructorlessStructNoProperties { }
 
+#pragma warning disable CS0649
     private struct ConstructorlessStruct { public int A; }
+#pragma warning restore CS0649
 
     // TODO revisit this after working through https://github.com/dotnet/runtime/issues/63555
     //[Test]

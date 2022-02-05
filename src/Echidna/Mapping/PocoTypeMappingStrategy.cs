@@ -82,50 +82,22 @@ internal sealed class PocoTypeMappingStrategy : CompositeTypeMappingStrategy
         NullabilityInfo? nullabilityInfo,
         IEnumerable<BindableMember> parametersOrProperties)
     {
-        // TODO this will have to be revisited wrt generic types; see https://github.com/dotnet/runtime/issues/63555
+        // TODO leverage parent nullability info for nested
 
         var result = new HashSet<BindableMember>();
 
-        var genericArguments = type.GetGenericArguments();
-        Type? genericTypeDefinition = null;
-
-        foreach (var parameterOrProperty in parametersOrProperties.Where(p => !p.Type.IsValueType))
+        foreach (var member in parametersOrProperties.Where(p => !p.Type.IsValueType))
         {
-            if (parameterOrProperty.Parameter is { } parameter)
+            var info =
+                member.Parameter is { } parameter ? (Nullability.TryGetFor(parameter, out var parameterInfo) ? parameterInfo : null)
+                : member.Property is { } property ? (Nullability.TryGetFor(property, out var propertyInfo) ? propertyInfo : null)
+                : member.Field is { } field ? (Nullability.TryGetFor(field, out var fieldInfo) ? fieldInfo : null)
+                : throw Invariant.ShouldNeverGetHere();
+            if (info?.WriteState == NullabilityState.NotNull)
             {
-                if (Nullability.TryGetFor(parameter, out var info) && info.WriteState == NullabilityState.NotNull)
-                {
-                    result.Add(parameterOrProperty);
-                }
-                // if the parameter is a generic argument, then we might be able to get the nullability from NullabilityInfo
-                else if (nullabilityInfo != null && genericArguments.Contains(parameter.ParameterType))
-                {
-                    var genericConstructor = (ConstructorInfo)GenericTypeDefinition().GetMemberWithSameMetadataDefinitionAs(parameter.Member);
-                    var genericConstructorParameter = genericConstructor.GetParameters()[parameter.Position];
-                    if (genericConstructorParameter.ParameterType.IsGenericTypeParameter
-                        && nullabilityInfo.GenericTypeArguments[genericConstructorParameter.ParameterType.GenericParameterPosition].WriteState == NullabilityState.NotNull)
-                    {
-                        result.Add(parameterOrProperty);
-                    }
-                }
-            }
-            else if (Nullability.TryGetFor(parameterOrProperty.Property!, out var info) && info.WriteState == NullabilityState.NotNull)
-            {
-                result.Add(parameterOrProperty);
-            }
-            // if the property is a generic argument, then we might be able to get the nullability from NullabilityInfo 
-            else if (nullabilityInfo != null && genericArguments.Contains(parameterOrProperty.Type))
-            {
-                var genericProperty = (PropertyInfo)GenericTypeDefinition().GetMemberWithSameMetadataDefinitionAs(parameterOrProperty.Property!);
-                if (genericProperty.PropertyType.IsGenericParameter
-                    && nullabilityInfo.GenericTypeArguments[genericProperty.PropertyType.GenericParameterPosition].WriteState == NullabilityState.NotNull)
-                {
-                    result.Add(parameterOrProperty);
-                }
+                result.Add(member);
             }
         }
-
-        Type GenericTypeDefinition() => genericTypeDefinition ??= type.GetGenericTypeDefinition();
 
         return result;
     }
@@ -142,6 +114,7 @@ internal readonly struct BindableMember : IEquatable<BindableMember>
     public ParameterInfo? Parameter => this._value as ParameterInfo;
     public PropertyInfo? Property => this._value as PropertyInfo;
     public FieldInfo? Field => this._value as FieldInfo;
+    public MemberInfo? Member => this._value as MemberInfo;
 
     public Type Type => 
         this._value is ParameterInfo parameter ? parameter.ParameterType 

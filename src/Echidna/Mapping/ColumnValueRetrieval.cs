@@ -37,4 +37,7 @@ internal sealed record ColumnValueRetrieval(
                 && this.DestinationType.CanBeNull();
 }
 
-internal readonly record struct Column(int Index, string Name, Type Type);
+internal readonly record struct Column(int Index, string Name, Type Type)
+{
+    public override string ToString() => $"{this.Index} ({this.Type} {this.Name})";
+}
