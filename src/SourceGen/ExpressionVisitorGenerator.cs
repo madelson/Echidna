@@ -55,25 +55,33 @@ internal class ExpressionVisitorGenerator
             code.Line($"protected override {visitMethod.ReturnType.Name} {visitMethod.Name}{(visitMethod.IsGenericMethodDefinition ? "<T>" : string.Empty)}({nodeTypeName} node)")
                 .OpenBlock();
 
-            spec.HandleVisitStart(nodeTypeName, code);
-
-            if (visitMethod.Name == "VisitMember")
+            if (visitMethod.Name == "VisitExtension")
             {
-                code.Line("if (ExpressionHelper.IsClosureAccess(node))")
-                    .OpenBlock();
-                spec.HandleClosureAccess(code);
-                code.Line("return node;")
-                    .CloseBlock();
+                code.Line(@"throw new NotSupportedException($""Extension nodes are not supported: {node.GetType()}"");");
+            }
+            else
+            {
+                spec.HandleVisitStart(nodeTypeName, code);
+
+                if (visitMethod.Name == "VisitMember")
+                {
+                    code.Line("if (ExpressionHelper.IsClosureAccess(node))")
+                        .OpenBlock();
+                    spec.HandleClosureAccess(code);
+                    code.Line("return node;")
+                        .CloseBlock();
+                }
+
+                var properties = nodeType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(p => !IgnoredExpressionPropertyNames.Contains(p.Name));
+                foreach (var property in properties)
+                {
+                    HandleProperty(property.PropertyType, property.Name);
+                }
+
+                spec.HandleVisitEnd(code);
             }
 
-            var properties = nodeType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => !IgnoredExpressionPropertyNames.Contains(p.Name));
-            foreach (var property in properties)
-            {
-                HandleProperty(property.PropertyType, property.Name);
-            }
-
-            spec.HandleVisitEnd(code);
             code.CloseBlock()
                 .Line();
 

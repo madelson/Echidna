@@ -15,68 +15,23 @@ internal class ExpressionComparerGenerator : ISourceGenerator
 {
     public void Execute(GeneratorExecutionContext context)
     {
-        var code = ExpressionVisitorGenerator.GenerateVisitor(new ExpressionEqualityVisitorSpec());
+        var specs = new ExpressionVisitorGenerator.IExpressionVisitorSpec[]
+        {
+            new ExpressionEqualityVisitorSpec(),
+            new ExpressionHashingVisitorSpec(),
+        };
 
-        System.IO.File.WriteAllText(@"c:\dev\sourcegenout.cs", $"// Generated {DateTime.Now}{Environment.NewLine}" + code);
-        context.AddSource("ExpressionEqualityVisitor.g.cs", code);
+        foreach (var spec in specs)
+        {
+            var code = ExpressionVisitorGenerator.GenerateVisitor(spec);
+            context.AddSource($"{spec.TypeName}.g.cs", code);
+
+            System.IO.Directory.CreateDirectory(@"C:\dev\sourcegenout");
+            System.IO.File.WriteAllText($@"C:\dev\sourcegenout\{spec.TypeName}.cs", $"// Generated {DateTime.Now}{Environment.NewLine}" + code);
+        }
     }
 
     public void Initialize(GeneratorInitializationContext context)
     {
-    }
-
-    private class ExpressionEqualityVisitorSpec : ExpressionVisitorGenerator.IExpressionVisitorSpec
-    {
-        public string TypeName => "ExpressionEqualityVisitor";
-
-        public void HandleAfterVisitChild(string accessor, CodeWriter code) =>
-            code.Line("if (this._failed) { return node; }");
-
-        public void HandleBeforeVisitChild(string accessor, CodeWriter code) =>
-            code.Line($"this._other = other.{accessor};");
-
-        public void HandleBeforeVisitChildCollection(string accessor, CodeWriter code) =>
-            this.FailIf($"count != other.{accessor}.Count", code);
-
-        public void HandleChildPropertyValue(string accessor, Type type, CodeWriter code)
-        {
-            var nullableUnderlyingType = Nullable.GetUnderlyingType(type);
-            var underlyingType = nullableUnderlyingType ?? type;
-            if (!underlyingType.IsPrimitive 
-                && !underlyingType.IsEnum
-                && type != typeof(string)
-                && type != typeof(object)
-                && type != typeof(CallSiteBinder)
-                && !typeof(MemberInfo).IsAssignableFrom(type))
-            {
-                throw new InvalidOperationException($"Unexpected property type {type} (accessor = '{accessor}')");
-            }
-
-            this.FailIf(
-                $"!EqualityComparer<{underlyingType}{(nullableUnderlyingType is null ? string.Empty : "?")}>.Default.Equals(node.{accessor}, other.{accessor})",
-                code
-            );
-        }
-
-        public void HandleClosureAccess(CodeWriter code) => this.FailIf("!ExpressionHelper.IsClosureAccess(other)", code);
-
-        public void HandleExpressionType(CodeWriter code) => this.FailIf("node.Type != ((Expression)this._other).Type", code);
-
-        public void HandleNullExpression(CodeWriter code) =>
-            code.Line("if (this._other is not null) { this._failed = true; }")
-                .Line("return node;");
-
-        public void HandleVisitEnd(CodeWriter code) => code.Line("this._other = other;").Line("return node;");
-
-        public void HandleVisitStart(string nodeTypeName, CodeWriter code) => this.FailIf($"this._other is not {nodeTypeName} other", code);
-
-        private void FailIf(string condition, CodeWriter code)
-        {
-            code.Line($"if ({condition})")
-                .OpenBlock()
-                .Line("this._failed = true;")
-                .Line("return node;")
-                .CloseBlock();
-        }
     }
 }
