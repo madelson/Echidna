@@ -5,7 +5,9 @@ VisualStudioVersion = 17.0.31919.166
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Echidna", "Echidna\Echidna.csproj", "{4BF199A6-BC45-482A-90F5-5464C15D6B24}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Echidna.Tests", "Echidna.Tests\Echidna.Tests.csproj", "{979BC118-7FA3-43AF-9B6E-4F44A8411334}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Echidna.Tests", "Echidna.Tests\Echidna.Tests.csproj", "{979BC118-7FA3-43AF-9B6E-4F44A8411334}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SourceGen", "SourceGen\SourceGen.csproj", "{6498BF05-ED40-4B31-9DD8-E22404DC5F64}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{979BC118-7FA3-43AF-9B6E-4F44A8411334}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{979BC118-7FA3-43AF-9B6E-4F44A8411334}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{979BC118-7FA3-43AF-9B6E-4F44A8411334}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6498BF05-ED40-4B31-9DD8-E22404DC5F64}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6498BF05-ED40-4B31-9DD8-E22404DC5F64}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6498BF05-ED40-4B31-9DD8-E22404DC5F64}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6498BF05-ED40-4B31-9DD8-E22404DC5F64}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
