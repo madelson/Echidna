@@ -8,11 +8,10 @@ internal class ExpressionEqualityVisitorTest
     [Test]
     public void TestCanDetectEqualExpressions()
     {
-        ExpressionEqualityVisitor visitor = new();
-        Assert.IsTrue(visitor.Equals(Create(1), Create(1)));
-        Assert.IsTrue(visitor.Equals(Create(2), Create(3))); // differ only by closure field value
-        Assert.IsTrue(visitor.Equals(Create(10), Create2(10))); // differ only by closure type
-        Assert.IsTrue(visitor.Equals(Create(5), Create2(-5))); // differ only by closure field value and closure type
+        AssertEquality(Create(1), Create(1), equal: true);
+        AssertEquality(Create(2), Create(3), equal: true); // differ only by closure field value
+        AssertEquality(Create(10), Create2(10), equal: true); // differ only by closure type
+        AssertEquality(Create(5), Create2(-5), equal: true); // differ only by closure field value and closure type
     }
 
     [Test]
@@ -21,7 +20,7 @@ internal class ExpressionEqualityVisitorTest
         var k = 2;
         Expression<Func<int>> e = () => 2 * (k + 2);
         ExpressionEqualityVisitor visitor = new();
-        Assert.IsFalse(visitor.Equals(e, Create(2)));
+        AssertEquality(e, Create(2), equal: false);
     }
 
     private Expression Create(int i)
@@ -34,5 +33,23 @@ internal class ExpressionEqualityVisitorTest
     {
         Expression<Func<int>> e = () => 2 * (j + 1);
         return e;
+    }
+
+    private static void AssertEquality(Expression? @this, Expression? that, bool equal)
+    {
+        ExpressionEqualityVisitor equalityVisitor = new();
+        var areEqual = equalityVisitor.Equals(@this, that);
+        Assert.AreEqual(equal, areEqual);
+        ExpressionHashingVisitor hashingVisitor = new();
+        var thisHash = hashingVisitor.GetHashCode(@this);
+        var thatHash = hashingVisitor.GetHashCode(that);
+        if (equal)
+        {
+            Assert.AreEqual(thatHash, thisHash);
+        }
+        else
+        {
+            Assert.AreNotEqual(thatHash, thisHash);
+        }
     }
 }

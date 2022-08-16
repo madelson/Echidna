@@ -2,6 +2,9 @@
 
 namespace Medallion.Data.Entities;
 
+/// <summary>
+/// Implements hashing for expressions that is consistent with <see cref="ExpressionEqualityVisitor"/>
+/// </summary>
 internal partial class ExpressionHashingVisitor
 {
     private HashCode _hash;

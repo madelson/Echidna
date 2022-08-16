@@ -2,6 +2,9 @@
 
 namespace Medallion.Data.Entities;
 
+/// <summary>
+/// Determines whether 2 expressions are equal modulo accessing closures
+/// </summary>
 internal partial class ExpressionEqualityVisitor
 {
     private object? _other;
