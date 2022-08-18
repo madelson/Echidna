@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions;
+﻿using System.Diagnostics;
+using System.Linq.Expressions;
 
 namespace Medallion.Data.Entities;
 
@@ -15,6 +16,8 @@ internal partial class ExpressionEqualityVisitor
         this._other = that;
         this._failed = false;
         this.Visit(@this);
+        Debug.Assert(this._other == that);
+        this._other = null;
         return !this._failed;
     }
 }
