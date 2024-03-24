@@ -16,7 +16,7 @@ internal partial class ExpressionEqualityVisitor
         this._other = that;
         this._failed = false;
         this.Visit(@this);
-        Debug.Assert(this._other == that);
+        Debug.Assert((this._other == that) == !this._failed);
         this._other = null;
         return !this._failed;
     }

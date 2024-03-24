@@ -1,5 +1,6 @@
 ﻿using Medallion.Data.Mapping;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text.RegularExpressions;
@@ -29,8 +30,9 @@ internal class ScalarConverterTest
             };
             if (from == typeof(float) || from == typeof(double))
             {
-                fromValues.Add(Convert.ChangeType("∞", from));
-                fromValues.Add(Convert.ChangeType("-∞", from));
+                // infinity symbols can differ based on culture https://github.com/dotnet/runtime/issues/100197#issuecomment-2016688344
+                fromValues.Add(Convert.ChangeType(CultureInfo.CurrentCulture.NumberFormat.PositiveInfinitySymbol, from));
+                fromValues.Add(Convert.ChangeType(CultureInfo.CurrentCulture.NumberFormat.NegativeInfinitySymbol, from));
             }
             if (from == typeof(float) || from == typeof(double) || from == typeof(decimal))
             {
