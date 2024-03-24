@@ -2,10 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace SourceGen;
@@ -26,8 +28,9 @@ internal class ExpressionComparerGenerator : ISourceGenerator
             var code = ExpressionVisitorGenerator.GenerateVisitor(spec);
             context.AddSource($"{spec.TypeName}.g.cs", code);
 
-            System.IO.Directory.CreateDirectory(@"C:\dev\sourcegenout");
-            System.IO.File.WriteAllText($@"C:\dev\sourcegenout\{spec.TypeName}.cs", $"// Generated {DateTime.Now}{Environment.NewLine}" + code);
+            var sourcegenoutDirectory = Path.Combine(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"C:\" : "/tmp", "dev", "sourcegenout");
+			Directory.CreateDirectory(sourcegenoutDirectory);
+			File.WriteAllText(Path.Combine(sourcegenoutDirectory, $"{spec.TypeName}.cs"), $"// Generated {DateTime.Now}{Environment.NewLine}" + code);
         }
     }
 
