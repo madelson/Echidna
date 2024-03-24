@@ -6,7 +6,7 @@ namespace Medallion.Data.Tests.Mapping;
 internal class DictionaryMappingTest
 {
     [Test]
-    public void TestCanMapToIReadOnlyDictionary([Values] Db db)
+    public void TestCanMapToIReadOnlyDictionary([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
         using var reader = db.Read("SELECT 1 AS A, 'str' AS b, 2.5 AS C, NULL AS d");
         Assert.IsTrue(reader.Value.Read());
@@ -21,7 +21,7 @@ internal class DictionaryMappingTest
     }
 
     [Test]
-    public void TestCanMapToIDictionary([Values] Db db)
+    public void TestCanMapToIDictionary([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
         using var reader = db.Read("SELECT 1 AS A, 'str' AS b, 2.5 AS C, NULL AS d");
         Assert.IsTrue(reader.Value.Read());
@@ -36,7 +36,7 @@ internal class DictionaryMappingTest
     }
 
     [Test]
-    public void TestCanMapToDictionary([Values] Db db)
+    public void TestCanMapToDictionary([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
         using var reader = db.Read("SELECT 1 AS A, 'str' AS b, 2.5 AS C, NULL AS d");
         Assert.IsTrue(reader.Value.Read());
@@ -50,7 +50,7 @@ internal class DictionaryMappingTest
     }
 
     [Test]
-    public void TestThrowsOnDuplicateKeys([Values] Db db)
+    public void TestThrowsOnDuplicateKeys([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
         using var reader = db.Read("SELECT 1 AS A, 2 AS a");
         Assert.IsTrue(reader.Value.Read());
@@ -61,7 +61,7 @@ internal class DictionaryMappingTest
     }
 
     [Test]
-    public void TestCanConvertValues([Values] Db db)
+    public void TestCanConvertValues([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
         using var reader = db.Read("SELECT 2.0 AS a, CAST(1 AS FLOAT) AS b, CAST(NULL AS CHAR(10)) AS c");
         Assert.IsTrue(reader.Value.Read());
@@ -74,9 +74,9 @@ internal class DictionaryMappingTest
     }
 
     [Test]
-    public void TestAttemptsToConvertAllValues()
+    public void TestAttemptsToConvertAllValues([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.SqlServer.Read("SELECT 1 AS a, 'b' as b");
+        using var reader = db.Read("SELECT 1 AS a, 'b' as b");
         Assert.IsTrue(reader.Value.Read());
 
         var mapper = MappingDelegateProvider.GetMappingDelegate<Dictionary<string, int?>>(reader.Value);
@@ -86,9 +86,9 @@ internal class DictionaryMappingTest
     }
 
     [Test]
-    public void TestCreatesCaseInsensitiveDictionaries()
+    public void TestCreatesCaseInsensitiveDictionaries([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.Postgres.Read("SELECT 1 AS apple");
+        using var reader = db.Read("SELECT 1 AS apple");
         Assert.IsTrue(reader.Value.Read());
 
         var dict = MappingDelegateProvider.GetMappingDelegate<Dictionary<string, int>>(reader.Value)();

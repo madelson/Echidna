@@ -10,9 +10,9 @@ namespace Medallion.Data.Tests.Mapping;
 internal class PocoMappingTest
 {
     [Test]
-    public void TestCanMapToConstructorRegardlessOfOrder()
+    public void TestCanMapToConstructorRegardlessOfOrder([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.MariaDb.Read("SELECT 100 AS B, 'x' AS A");
+        using var reader = db.Read("SELECT 100 AS B, 'x' AS A");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<HasConstructor>(reader.Value)();
@@ -36,9 +36,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestCanMapToPropertiesAndFields()
+    public void TestCanMapToPropertiesAndFields([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.MySql.Read("SELECT 5 AS property, 'five' AS field");
+        using var reader = db.Read("SELECT 5 AS property, 'five' AS field");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<HasPropertyAndField>(reader.Value)();
@@ -55,9 +55,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestPrefersPropertyOverField()
+    public void TestPrefersPropertyOverField([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.Oracle.Read("SELECT 2.3 AS value");
+        using var reader = db.Read("SELECT 2.3 AS value");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<HasPropertyAndFieldWithSameName>(reader.Value)();
@@ -91,9 +91,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestCanMapToConstructorsPropertiesAndFields()
+    public void TestCanMapToConstructorsPropertiesAndFields([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.Postgres.Read("SELECT 1 AS a, '2' AS b, 3 AS c");
+        using var reader = db.Read("SELECT 1 AS a, '2' AS b, 3 AS c");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<HasConstructorPropertyAndField>(reader.Value)();
@@ -114,9 +114,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestIgnoresByRefConstructor()
+    public void TestIgnoresByRefConstructor([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.SystemDataSqlServer.Read("SELECT 1 AS i, 2 AS j");
+        using var reader = db.Read("SELECT 1 AS i, 2 AS j");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<HasByRefConstructor>(reader.Value)();
@@ -132,23 +132,23 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestPrefersConstructorWithMoreBoundColumns()
+    public void TestPrefersConstructorWithMoreBoundColumns([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var readerA = Db.MariaDb.Read("SELECT 10 AS a");
+        using var readerA = db.Read("SELECT 10 AS a");
         Assert.IsTrue(readerA.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<HasMultipleConstructors>(readerA.Value)();
         Assert.AreEqual((10, 0, 0), (value.A, value.B, value.C));
         Assert.AreEqual(1, value.Constructor);
 
-        using var readerB = Db.MariaDb.Read("SELECT 11 AS a, 21 AS b");
+        using var readerB = db.Read("SELECT 11 AS a, 21 AS b");
         Assert.IsTrue(readerB.Value.Read());
 
         value = MappingDelegateProvider.GetMappingDelegate<HasMultipleConstructors>(readerB.Value)();
         Assert.AreEqual((11, 21, 0), (value.A, value.B, value.C));
         Assert.AreEqual(2, value.Constructor);
 
-        using var readerC = Db.MariaDb.Read("SELECT 12 AS a, 22 AS b, 32 AS c");
+        using var readerC = db.Read("SELECT 12 AS a, 22 AS b, 32 AS c");
         Assert.IsTrue(readerC.Value.Read());
 
         value = MappingDelegateProvider.GetMappingDelegate<HasMultipleConstructors>(readerC.Value)();
@@ -169,9 +169,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestDetectsNullableReferenceTypeAnnotations()
+    public void TestDetectsNullableReferenceTypeAnnotations([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using (var reader = Db.MySql.Read("SELECT NULL AS a, NULL AS aNull, 'B' AS b, NULL AS bNull, 'C' AS c, NULL AS cNull"))
+        using (var reader = db.Read("SELECT NULL AS a, NULL AS aNull, 'B' AS b, NULL AS bNull, 'C' AS c, NULL AS cNull"))
         {
             Assert.IsTrue(reader.Value.Read());
 
@@ -179,7 +179,7 @@ internal class PocoMappingTest
             Assert.That(exception!.Message, Does.Contain("column 0"));
         }
 
-        using (var reader = Db.MySql.Read("SELECT 'A' AS a, NULL AS aNull, NULL AS b, NULL AS bNull, 'C' AS c, NULL AS cNull"))
+        using (var reader = db.Read("SELECT 'A' AS a, NULL AS aNull, NULL AS b, NULL AS bNull, 'C' AS c, NULL AS cNull"))
         {
             Assert.IsTrue(reader.Value.Read());
 
@@ -187,7 +187,7 @@ internal class PocoMappingTest
             Assert.That(exception!.Message, Does.Contain("column 2"));
         }
 
-        using (var reader = Db.MySql.Read("SELECT 'A' AS a, NULL AS aNull, 'B' AS b, NULL AS bNull, NULL AS c, NULL AS cNull"))
+        using (var reader = db.Read("SELECT 'A' AS a, NULL AS aNull, 'B' AS b, NULL AS bNull, NULL AS c, NULL AS cNull"))
         {
             Assert.IsTrue(reader.Value.Read());
 
@@ -195,7 +195,7 @@ internal class PocoMappingTest
             Assert.That(exception!.Message, Does.Contain("column 4"));
         }
 
-        using (var reader = Db.MySql.Read("SELECT 'A' AS a, NULL AS aNull, 'B' AS b, NULL AS bNull, 'C' AS c, NULL AS cNull"))
+        using (var reader = db.Read("SELECT 'A' AS a, NULL AS aNull, 'B' AS b, NULL AS bNull, 'C' AS c, NULL AS cNull"))
         {
             Assert.IsTrue(reader.Value.Read());
 
@@ -228,9 +228,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestCanMapToValueTypeWithoutConstructor()
+    public void TestCanMapToValueTypeWithoutConstructor([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.Oracle.Read("SELECT -2 AS a, 10.5 AS b");
+        using var reader = db.Read("SELECT -2 AS a, 10.5 AS b");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<ValueTypeWithoutConstructor>(reader.Value)();
@@ -272,9 +272,9 @@ internal class PocoMappingTest
     private record RecordClass(long A, uint B, string C);
 
     [Test]
-    public void TestCanMapToRecordStruct()
+    public void TestCanMapToRecordStruct([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.SystemDataSqlServer.Read($"SELECT 70.2 AS y, -100.5 AS x");
+        using var reader = db.Read($"SELECT 70.2 AS y, -100.5 AS x");
         Assert.IsTrue(reader.Value.Read());
 
         var value = MappingDelegateProvider.GetMappingDelegate<RecordStruct>(reader.Value)();
@@ -285,9 +285,9 @@ internal class PocoMappingTest
     private readonly record struct RecordStruct(double X, double Y);
 
     [Test]
-    public void TestMustBindToAtLeastOneValue()
+    public void TestMustBindToAtLeastOneValue([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.MariaDb.Read($"SELECT 1 AS x");
+        using var reader = db.Read($"SELECT 1 AS x");
         Assert.IsTrue(reader.Value.Read());
 
         // todo exception will be different
@@ -295,9 +295,9 @@ internal class PocoMappingTest
     }
 
     [Test]
-    public void TestRejectsPartialBindingIfNotAllColumnsAreUsed()
+    public void TestRejectsPartialBindingIfNotAllColumnsAreUsed([ValueSource(typeof(TestHelper), nameof(TestHelper.DbsToTest))] Db db)
     {
-        using var reader = Db.MySql.Read($"SELECT 1 AS a, '2' AS b, 1.5 AS x");
+        using var reader = db.Read($"SELECT 1 AS a, '2' AS b, 1.5 AS x");
         Assert.IsTrue(reader.Value.Read());
 
         var exception = Assert.Throws<MappingException>(() => MappingDelegateProvider.GetMappingDelegate<HasConstructorPropertyAndField>(reader.Value));

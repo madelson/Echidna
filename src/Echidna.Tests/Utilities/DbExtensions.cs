@@ -5,6 +5,7 @@ using Oracle.ManagedDataAccess.Client;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using System.Runtime.InteropServices;
 
 namespace Medallion.Data.Tests;
 
@@ -17,21 +18,26 @@ internal static class DbExtensions
         static db =>
         {
             var credentialDirectory = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "credentials"));
+            var dataSource = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? null : "localhost";
 
             switch (db)
             {
                 case Db.SqlServer:
-                    return new SqlConnectionStringBuilder { DataSource = @".\SQLEXPRESS", IntegratedSecurity = true, TrustServerCertificate = true }.ConnectionString;
+                    return TestHelper.IsOnCIPipeline
+                        ? new SqlConnectionStringBuilder { DataSource = dataSource ?? @"(local)\SQL2017", UserID = "sa", Password = "Password12!", TrustServerCertificate = true }.ConnectionString
+                        : new SqlConnectionStringBuilder { DataSource = dataSource ?? @".\SQLEXPRESS", IntegratedSecurity = true, TrustServerCertificate = true }.ConnectionString;
                 case Db.SystemDataSqlServer:
-                    return new SqlConnectionStringBuilder { DataSource = @".\SQLEXPRESS", IntegratedSecurity = true }.ConnectionString;
+                    return TestHelper.IsOnCIPipeline
+                        ? new SqlConnectionStringBuilder { DataSource = dataSource ?? @"(local)\SQL2017", UserID = "sa", Password = "Password12!" }.ConnectionString
+                        : new SqlConnectionStringBuilder { DataSource = dataSource ?? @".\SQLEXPRESS", IntegratedSecurity = true }.ConnectionString;
                 case Db.Postgres:
                     {
-                        var (username, password) = ReadCredentials("postgres.txt");
-                        return new NpgsqlConnectionStringBuilder { Port = 5433, Host = "localhost", Database = "postgres", Username = username, Password = password }.ConnectionString;
+                        var (username, password) = ReadCredentials(TestHelper.IsOnCIPipeline ? "postgres.ci.txt" : "postgres.txt");
+                        return new NpgsqlConnectionStringBuilder { Port = 5432, Host = "localhost", Database = "postgres", Username = username, Password = password }.ConnectionString;
                     }
                 case Db.MySql:
                     {
-                        var (username, password) = ReadCredentials("mysql.txt");
+                        var (username, password) = ReadCredentials(TestHelper.IsOnCIPipeline ? "mysql.ci.txt" : "mysql.txt");
                         return new MySqlConnectionStringBuilder { Port = 3306, Server = "localhost", Database = "mysql", UserID = username, Password = password }.ConnectionString;
                     }
                 case Db.MariaDb:
@@ -41,7 +47,10 @@ internal static class DbExtensions
                     }
                 case Db.Oracle:
                     {
-                        var walletDirectory = Directory.GetDirectories(credentialDirectory, "Wallet_*").Single();
+                        if (Directory.GetDirectories(credentialDirectory, "Wallet_*").SingleOrDefault() is not { } walletDirectory)
+                        {
+                            throw new InvalidOperationException($"Missing a wallet directory in {credentialDirectory}. Please follow the setup docs first.");
+                        }
                         if (OracleConfiguration.TnsAdmin != walletDirectory)
                         {
                             // directory containing tnsnames.ora and sqlnet.ora
