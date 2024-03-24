@@ -39,4 +39,16 @@ internal static class Nullability
         lock (Context) { nullabilityInfo = Context.Create(property); }
         return true;
     }
+
+    public static bool TryGetFor(FieldInfo field, [NotNullWhen(returnValue: true)] out NullabilityInfo? nullabilityInfo)
+    {
+        if (!IsSupported)
+        {
+            nullabilityInfo = null;
+            return false;
+        }
+
+        lock (Context) { nullabilityInfo = Context.Create(field); }
+        return true;
+    }
 }
