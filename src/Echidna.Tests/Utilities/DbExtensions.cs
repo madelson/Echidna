@@ -47,7 +47,10 @@ internal static class DbExtensions
                     }
                 case Db.Oracle:
                     {
-                        var walletDirectory = Directory.GetDirectories(credentialDirectory, "Wallet_*").Single();
+                        if (Directory.GetDirectories(credentialDirectory, "Wallet_*").SingleOrDefault() is not { } walletDirectory)
+                        {
+                            throw new InvalidOperationException($"Missing a wallet directory in {credentialDirectory}. Please follow the setup docs first.");
+                        }
                         if (OracleConfiguration.TnsAdmin != walletDirectory)
                         {
                             // directory containing tnsnames.ora and sqlnet.ora
