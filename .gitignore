@@ -52,4 +52,9 @@ StyleCop.Cache
 #MA: using nuget package restore!
 packages/
 
-credentials/
+# Testing credentials
+/src/Echidna.Tests/credentials/wallet_*
+/src/Echidna.Tests/credentials/mariadb.txt
+/src/Echidna.Tests/credentials/mysql.txt
+/src/Echidna.Tests/credentials/oracle.txt
+/src/Echidna.Tests/credentials/postgres.txt

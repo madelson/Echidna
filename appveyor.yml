@@ -1,0 +1,33 @@
+version: 1.0.{build}
+
+image:
+  - Visual Studio 2022
+  - Ubuntu2204  
+
+for:
+-
+  matrix:
+    only:
+      - image: Visual Studio 2022
+  services:
+    # SQL Server 2019 is installed on Windows per https://www.appveyor.com/docs/windows-images-software/
+    # but not on Linux per  https://www.appveyor.com/docs/linux-images-software/
+    # so use 2017 on both images
+    - mssql2017
+  # Workaround until AppVeyor fixes https://github.com/appveyor/ci/issues/3894
+  before_build:
+    - ps: Start-Service MySQL80, postgresql-x64-15
+-
+  matrix:
+    only:
+      - image: Ubuntu2204
+  services:
+    - mssql2017
+    - mysql
+    - postgresql
+
+build_script:
+  - dotnet build src/
+  
+test_script:
+  - dotnet test src/ --no-build
